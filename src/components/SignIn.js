@@ -1,6 +1,9 @@
 import React from "react";
-import { Button, Divider, Form, Grid, Segment } from 'semantic-ui-react';
+import { Divider, Grid, Segment } from 'semantic-ui-react';
 import "./SignIn.css";
+import FirebaseApp from "../FirebaseApp";
+import SignInView from "./SignInView";
+import SignUpView from "./SignUpView";
 
 class SignIn extends React.Component 
 {
@@ -8,7 +11,6 @@ class SignIn extends React.Component
   {
     super(props);
   }
-
   render() 
   {
     return (
@@ -16,20 +18,34 @@ class SignIn extends React.Component
         <Segment placeholder>
             <Grid columns={2} relaxed='very' stackable>
               <Grid.Column>
-                <Form>
-                  <Form.Input icon='user' iconPosition='left' label='Username' placeholder='Username' />
-                  <Form.Input icon='lock' iconPosition='left' label='Password' type='password' />
-                  <Button content='Login' primary />
-                </Form>
+                <SignInView onSubmit={this.handleSignIn} />
               </Grid.Column>
               <Grid.Column verticalAlign='middle'>
-                <Button content='Sign up' icon='signup' size='big' />
+                <SignUpView onSubmit={this.handleSignUp} />
               </Grid.Column>
             </Grid>
             <Divider vertical>Or</Divider>
           </Segment>
       </div>
     );
+  }
+  handleSignIn = async event => 
+  {
+
+  }
+  handleSignUp = async event => 
+  {
+    event.preventDefault();
+    const { email, password } = event.target.elements;
+    try 
+    {
+      const user = await FirebaseApp.auth().createUserWithEmailAndPassword(email.value, password.value);
+      this.props.history.push("/");
+    }
+    catch (error) 
+    {
+      alert(error);
+    }
   }
 }
 

@@ -16,8 +16,6 @@ function createWindow()
     {
         minWidth: 300,
         minHeight: 475,
-        maxWidth: 800,
-        maxHeight: 600
     });
 
     mainWindow.loadURL('file://' + __dirname + '/index.desktop.html');
