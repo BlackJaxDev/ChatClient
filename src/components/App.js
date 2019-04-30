@@ -1,59 +1,33 @@
 import React from "react";
+import { BrowserRouter as Router, Switch, Route } from 'react-router-dom';
+import { Provider } from 'react-redux';
+import configureStore from './redux/configureStore';
 import "./App.css";
-import Server from "./Server";
+
+import Dashboard from './Dashboard'
+import Navbar from './Navbar'
+import SignIn from './SignIn'
+
+const store = configureStore();
 
 class App extends React.Component 
 {
   constructor(props) 
   {
     super(props);
-    this.state = { authenticated: null };
-    this.checkAuthentication = this.checkAuthentication.bind(this);
-    this.checkAuthentication();
-    this.login = this.login.bind(this);
-    this.logout = this.logout.bind(this);
-  }
-  async checkAuthentication() 
-  {
-    const authenticated = await this.props.auth.isAuthenticated();
-    if (authenticated !== this.state.authenticated) 
-    {
-      this.setState({ authenticated });
-    }
-  }
-  componentDidUpdate()
-  {
-    this.checkAuthentication();
-  }
-  async login() 
-  {
-    // Redirect to '/' after login
-    this.props.auth.login('/');
-  }
-  async logout() 
-  {
-    // Redirect to '/' after logout
-    this.props.auth.logout('/');
   }
   render() 
   {
-    if (this.state.authenticated === null)
-      return null;
-    
-    return this.state.authenticated ? (
-
-      //Logged in
-      <div className="component-app">
-        <Server></Server>
-      </div>
-
-    ) : (
-
-      //Logged out
-      <div className="component-app">
-        <Server></Server>
-      </div>
-
+    return (
+      <Router> 
+        <Provider store={store}>
+          <Navbar/>
+          <Switch>
+            <Route exact path="/" component={Dashboard} />
+            <Route path="/signin" component={SignIn} />
+          </Switch>
+        </Provider>
+      </Router>
     );
   }
 }
