@@ -28,7 +28,7 @@ module.exports = function(grunt)
             dist: 
             {
                 cache: false
-            }
+            },
         },
         'webpack-dev-server':
         {
@@ -38,13 +38,9 @@ module.exports = function(grunt)
                 port: 8000,
                 webpack: webpackDevConfig,
                 publicPath: '/assets/',
-                contentBase: './<%= pkg.src %>/'
+                contentBase: './',
             },
-
-            start:
-            {
-                keepAlive: true
-            }
+            keepalive: true,
         },
         'connect':
         {
@@ -52,7 +48,6 @@ module.exports = function(grunt)
             {
                 port: 8000
             },
-
             dist: 
             {
                 options:
@@ -135,13 +130,11 @@ module.exports = function(grunt)
                 tasks: ['webpack']
             }
         },
-
         'exec':
         {
             launch_nw: '/Applications/nwjs.app/Contents/MacOS/nwjs .',
             launch_electron: 'electron electron.js'
         },
-
         'concurrent':
         {
             nw:
@@ -162,14 +155,15 @@ module.exports = function(grunt)
             }
         }
     });
-
+    grunt.loadNpmTasks('grunt-webpack');
+    grunt.loadNpmTasks('grunt-keepalive');
     grunt.registerTask('serve-web', function(target) 
     {
         if (target === 'dist')
         {
             return grunt.task.run(['build', 'open:dist', 'connect:dist']);
         }
-        grunt.task.run(['open:dev', 'webpack-dev-server']);
+        grunt.task.run(['open:dev', 'webpack-dev-server', 'keepalive']);
     });
     grunt.registerTask('serve-nw', function() 
     {

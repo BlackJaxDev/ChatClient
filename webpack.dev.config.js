@@ -5,10 +5,16 @@
 
 var path = require('path');
 var webpack = require('webpack');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = 
 {
     mode: 'development',
+    entry: 
+    [
+        'webpack/hot/only-dev-server',
+        './src/index.js'
+    ],
     output: 
     {
         filename: 'main.js',
@@ -17,20 +23,16 @@ module.exports =
     },
     cache: true,
     devtool: false,
-    entry: 
-    [
-        'webpack/hot/only-dev-server',
-        './src/index.js'
-    ],
-    stats:
+    optimization: 
     {
-        colors: true,
-        reasons: true
+        minimize: false,
     },
+    stats: 'minimal',
     plugins:
     [
         new webpack.HotModuleReplacementPlugin(),
-        new webpack.LoaderOptionsPlugin({ debug: true })
+        new webpack.LoaderOptionsPlugin({ debug: true }),
+        new HtmlWebpackPlugin(),
     ],
     module:
     {
@@ -41,7 +43,7 @@ module.exports =
                 exclude: /node_modules/,
                 use: 
                 [
-                    { loader: 'react-hot' },
+                    { loader: 'react-hot-loader/webpack' },
                     { loader: 'babel-loader' }
                 ],
             },

@@ -10,14 +10,14 @@ var webpack = require('webpack');
 module.exports =
 {
     mode: 'production',
+    entry: './src/index.js',
     output:
     {
+        filename: 'main.js',
         publicPath: '/assets/',
-        path: path.resolve(__dirname, 'dist/assets'),
-        filename: 'main.js'
+        path: path.resolve(__dirname, 'dist/assets')
     },
     devtool: false,
-    entry: './src/index.js',
     optimization: 
     {
         minimize: true,
