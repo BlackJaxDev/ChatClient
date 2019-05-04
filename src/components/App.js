@@ -1,9 +1,6 @@
 
-import dotenv from 'dotenv'
-dotenv.config();
-
 import React from "react";
-import { BrowserRouter as Router, Switch, Route } from 'react-router-dom';
+import { BrowserRouter, Switch, Route } from 'react-router-dom';
 //import { Provider } from 'react-redux';
 //import configureStore from './redux/configureStore';
 import "./App.css";
@@ -25,13 +22,13 @@ class App extends React.Component
   render() 
   {
     return (
-      <Router> 
+      <BrowserRouter> 
         <Navbar/>
         <Switch>
           <Route exact path="/" component={Dashboard} />
-          <Route path="/signin" component={SignIn} />
+          <Route exact path="/signin" component={SignIn} />
         </Switch>
-      </Router>
+      </BrowserRouter>
     );
   }
 }

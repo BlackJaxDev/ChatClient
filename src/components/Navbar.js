@@ -18,4 +18,4 @@ class Navbar extends React.Component
   }
 }
 
-export default Dashboard;
+export default Navbar;

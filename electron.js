@@ -18,9 +18,9 @@ function createWindow()
         minHeight: 475,
     });
 
-    mainWindow.loadURL('file://' + __dirname + '/index.desktop.html');
+    mainWindow.loadURL('file://' + __dirname + '/public/index.desktop.html');
 
-    mainWindow.webContents.openDevTools();
+    //mainWindow.webContents.openDevTools();
 
     mainWindow.on('closed', function()
     {

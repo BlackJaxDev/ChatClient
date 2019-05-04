@@ -6,6 +6,9 @@
     ],
     "plugins": 
     [
-        ["babel-plugin-dotenv", { "replacedModuleName": "babel-dotenv"}]
+        ["babel-plugin-dotenv", { "replacedModuleName": "babel-dotenv"}],
+        ["@babel/plugin-proposal-class-properties", { "loose": true }],
+        ["react-hot-loader/babel", {}],
+        ["@babel/plugin-transform-runtime"]
     ]
 }

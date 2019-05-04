@@ -16,6 +16,9 @@ module.exports = function(grunt)
     // Let *load-grunt-tasks* require everything
     require('load-grunt-tasks')(grunt);
 
+    grunt.loadNpmTasks('grunt-webpack');
+    grunt.loadNpmTasks('grunt-keepalive');
+
     // Read configuration from package.json
     var pkgConfig = grunt.file.readJSON('package.json');
 
@@ -34,11 +37,13 @@ module.exports = function(grunt)
         {
             options:
             {
-                hot: true,
-                port: 8000,
                 webpack: webpackDevConfig,
-                publicPath: '/assets/',
-                contentBase: './',
+                hot:                true,
+                port:               8000,
+                historyApiFallback: true,
+                inline:             true,
+                progress:           true,
+                contentBase:        __dirname,
             },
             keepalive: true,
         },
@@ -68,7 +73,7 @@ module.exports = function(grunt)
             },
             dev:
             {
-                path: 'http://localhost:<%= connect.options.port %>/webpack-dev-server/index.web.html'
+                path: 'http://localhost:<%= connect.options.port %>/webpack-dev-server/index.html'
             },
             dist:
             {
@@ -155,8 +160,6 @@ module.exports = function(grunt)
             }
         }
     });
-    grunt.loadNpmTasks('grunt-webpack');
-    grunt.loadNpmTasks('grunt-keepalive');
     grunt.registerTask('serve-web', function(target) 
     {
         if (target === 'dist')
