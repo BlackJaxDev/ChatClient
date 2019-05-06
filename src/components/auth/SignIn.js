@@ -1,7 +1,7 @@
 import React from "react";
 import { Divider, Grid, Segment } from 'semantic-ui-react';
 import "./SignIn.css";
-import FirebaseApp from "../logic/FirebaseApp";
+import FirebaseApp from "../../logic/FirebaseApp";
 import SignInView from "./SignInView";
 import SignUpView from "./SignUpView";
 
