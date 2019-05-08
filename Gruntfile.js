@@ -73,11 +73,11 @@ module.exports = function(grunt)
             },
             dev:
             {
-                path: 'http://localhost:<%= connect.options.port %>/webpack-dev-server/index.html'
+                path: 'http://localhost:<%= connect.options.port %>/webpack-dev-server/'
             },
             dist:
             {
-                path: 'http://localhost:<%= connect.options.port %>/index.html'
+                path: 'http://localhost:<%= connect.options.port %>/'
             }
         },
         'karma':
