@@ -1,0 +1,19 @@
+@import url('https://fonts.googleapis.com/css?family=IBM+Plex+Sans');
+
+html, body {
+    background: #24242c;
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.component-app {
+    
+}
+
+.center-screen {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    min-height: 100vh;
+}

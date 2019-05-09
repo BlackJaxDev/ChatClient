@@ -1,22 +1,19 @@
 'use strict';
 
-require('dotenv').config();
+require("dotenv").config();
+
 var express = require('express');
+var mongoose = require('mongoose');
+var bodyParser = require('body-parser');
+var url = require('url');
+
 var app = express();
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
 
-import React from 'react';
-import ReactDOM from 'react-dom';
-
-import App from './components/App';
-import * as serviceWorker from './logic/serviceWorker';
-
-var port = process.env.PORT || 3000;
+var port = process.env.PORT || 3001;
 app.set('port', port);
 
-var mongoose = require('mongoose');
-var bodyParser = require('body-parser');
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
@@ -27,14 +24,20 @@ var schema = new mongoose.Schema(
 });
 var MessageModel = mongoose.model('Message', schema);
 
-app.get('/messages', (req, res) =>
+//example.com/user/bob?id=2265
+app.get('/user/:name', function(req, res)
+{
+    const query = req.query; //query = {id:"2265"}
+    const params = req.params; //params = {name:"bob"}
+})
+app.get('/api/messages', (req, res) =>
 {
     MessageModel.find({ }, (err, messages) => 
     {
         res.send(messages);
     })
 })
-app.post('/messages', async (req, res) => 
+app.post('/api/messages', async (req, res) => 
 {
     try
     {
@@ -51,7 +54,7 @@ app.post('/messages', async (req, res) =>
     }
     finally
     {
-        console.log('Message posted')
+        console.log('Message posted');
     }
 })
 
@@ -68,7 +71,7 @@ mongoose.connect(process.env.DB_URL, { useNewUrlParser: true });
 const db = mongoose.connection;  
 db.on('error', () =>
 {
-    console.error('Failed to connect to MongoDB.');  
+    console.error('Failed to connect to MongoDB.');
 });  
 db.once('open', () =>
 {
@@ -78,6 +81,3 @@ db.once('open', () =>
         console.log('Server is running on port', server.address().port);
     });
 });
-
-ReactDOM.render(<App />, document.getElementById('content'));
-serviceWorker.unregister();

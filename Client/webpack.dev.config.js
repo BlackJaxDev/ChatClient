@@ -31,7 +31,7 @@ module.exports =
     devServer: 
     {
         hot:                true,
-        port:               8000,
+        port:               3000,
         historyApiFallback: true,
         inline:             true,
         progress:           true,
@@ -39,7 +39,7 @@ module.exports =
     },
     node:
     {
-        fs: 'empty'
+        fs: 'empty',
     },
     plugins:
     [
@@ -47,9 +47,10 @@ module.exports =
         new webpack.LoaderOptionsPlugin({ debug: true }),
         new HtmlWebpackPlugin(
         {
+            inject: true,
             template: "public/index.web.html",
             filename: "index.html"
-        })
+        }),
     ],
     module:
     {

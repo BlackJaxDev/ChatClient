@@ -39,7 +39,7 @@ module.exports = function(grunt)
             {
                 webpack: webpackDevConfig,
                 hot:                true,
-                port:               8000,
+                port:               3000,
                 historyApiFallback: true,
                 inline:             true,
                 progress:           true,
@@ -51,7 +51,7 @@ module.exports = function(grunt)
         {
             options:
             {
-                port: 8000
+                port: 3000
             },
             dist: 
             {
