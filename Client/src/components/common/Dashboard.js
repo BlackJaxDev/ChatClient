@@ -4,11 +4,21 @@ import { Button } from "semantic-ui-react";
 
 class Dashboard extends React.Component 
 {
+  state = 
+  {
+    user: {
+      username: "",
+      avatarURL: "",
+      friendUsernames: [],
+      servers: [],
+    }
+  };
+
   render()
   {
     return (
       <div className="component-dashboard">
-        <Button label="Cool Button"></Button>
+        
       </div>
     );
   }

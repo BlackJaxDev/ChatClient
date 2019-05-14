@@ -1,61 +1,82 @@
 import React from "react";
-import { Divider, Grid, Segment } from 'semantic-ui-react';
+import { Divider, Grid, Segment, Form, Button } from 'semantic-ui-react';
 import "./SignIn.css";
 import FirebaseApp from "../../logic/FirebaseApp";
-import SignInView from "./SignInView";
-import SignUpView from "./SignUpView";
 
 class SignIn extends React.Component 
 {
+  state = 
+  {
+    email: '',
+    password: ''
+  }
   constructor(props) 
   {
     super(props);
+    this.handleSignUp = this.handleSignUp.bind(this);
+    this.handleSignIn = this.handleSignIn.bind(this);
+    this.handleTextChange = this.handleTextChange.bind(this);
+  }
+  handleTextChange = (e) => {
+    this.setState({ [event.target.name]: e.target.value })
+  }
+  handleSignIn(event)
+  {
+    event.preventDefault();
+    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION)
+    .then(function() 
+    {
+      FirebaseApp.auth().signInWithEmailAndPassword(this.state.email, this.state.password);
+      this.props.history.push("/");
+    })
+    .catch(function(error) 
+    {
+      //var errorCode = error.code;
+      var errorMessage = error.message;
+      alert(errorMessage);
+    });
+  }
+  handleSignUp(event)
+  {
+    event.preventDefault();
+    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION)
+    .then(function() 
+    {
+      FirebaseApp.auth().createUserWithEmailAndPassword(this.state.email, this.state.password);
+      this.props.history.push("/");
+    })
+    .catch(function(error) 
+    {
+      //var errorCode = error.code;
+      var errorMessage = error.message;
+      alert(errorMessage);
+    });
   }
   render() 
   {
     return (
-      <div className="component-sign-in">
-        <Segment placeholder>
-          <Grid columns={2} relaxed='very' stackable>
-            <Grid.Column>
-              <SignInView onSubmit={this.handleSignIn} />
-            </Grid.Column>
-            <Grid.Column verticalAlign='middle'>
-              <SignUpView onSubmit={this.handleSignUp} />
-            </Grid.Column>
-          </Grid>
-          <Divider vertical>Or</Divider>
-        </Segment>
-      </div>
+      this.props.authenticated ? (
+        <Redirect to="/"/>
+      ) : (
+        <div className="component-sign-in">
+          <Form onSubmit={this.handleSignIn}>
+            <Form.Input icon='user' iconPosition='left' name="email" label='Email' placeholder='Email' onChange={this.handleTextChange} />
+            <Form.Input icon='lock' iconPosition='left' name="password" label='Password' placeholder='Password' type='password' onChange={this.handleTextChange}  />
+            <Segment placeholder>
+              <Grid columns={2} relaxed='very' stackable>
+                <Grid.Column>
+                  <Button content='Log In' type="submit" primary />
+                </Grid.Column>
+                <Grid.Column verticalAlign='middle'>
+                  <Button content='Create Account' onClick={this.handleSignUp} />
+                </Grid.Column>
+              </Grid>
+              <Divider vertical>Or</Divider>
+            </Segment>
+          </Form>
+        </div>
+      )
     );
-  }
-  handleSignIn = async event => 
-  {
-    event.preventDefault();
-    const { email, password } = event.target.elements;
-    try 
-    {
-      const user = await FirebaseApp.auth().createUserWithEmailAndPassword(email.value, password.value);
-      this.props.history.push("/");
-    }
-    catch (error) 
-    {
-      alert(error);
-    }
-  }
-  handleSignUp = async event => 
-  {
-    event.preventDefault();
-    const { email, password } = event.target.elements;
-    try 
-    {
-      const user = await FirebaseApp.auth().createUserWithEmailAndPassword(email.value, password.value);
-      this.props.history.push("/");
-    }
-    catch (error) 
-    {
-      alert(error);
-    }
   }
 }
 
