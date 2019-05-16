@@ -1,7 +1,7 @@
 
 import React from "react";
 import firebase from "firebase";
-import { BrowserRouter, Route } from 'react-router-dom';
+import { BrowserRouter, Route, Switch, Redirect } from 'react-router-dom';
 import { Dimmer, Loader } from "semantic-ui-react";
 import "./App.css";
 import 'normalize.css';
@@ -11,6 +11,9 @@ import Navbar from './common/Navbar';
 import SignIn from './auth/SignIn';
 import FirebaseApp from '../logic/FirebaseApp';
 import PrivateRoute from "./PrivateRoute";
+import Profile from './server/Profile';
+import Server from './server/Server';
+import Page404 from './server/404';
 
 class App extends React.Component 
 {
@@ -64,11 +67,14 @@ class App extends React.Component
 
     return (
       <BrowserRouter> 
-        <Navbar authenticated={this.state.authenticated}/>
-        <PrivateRoute exact path="/" component={Dashboard} authenticated={this.state.authenticated}/>
-        <Route exact path="/signin" component={SignIn} authenticated={this.state.authenticated} />
-        <Route exact path="/user/:user" component={Profile} authenticated={this.state.authenticated} />
-        <Route exact path="/server/:server" component={Server} authenticated={this.state.authenticated} />
+        <Navbar user={this.state.user}/>
+        <Switch>
+          <PrivateRoute exact path="/" component={Dashboard} authenticated={this.state.authenticated}/>
+          <Route exact path="/signin" component={SignIn} authenticated={this.state.authenticated} />
+          <Route exact path="/user/:user" component={Profile} authenticated={this.state.authenticated} />
+          <Route exact path="/server/:server" component={Server} authenticated={this.state.authenticated} />
+          <Route component={Page404} />
+        </Switch>
         <Redirect from="/user" to="/" />
         <Redirect from="/server" to="/" />
       </BrowserRouter>

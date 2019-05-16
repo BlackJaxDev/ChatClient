@@ -38,6 +38,7 @@ module.exports =
     [
         new webpack.optimize.AggressiveMergingPlugin()
     ],
+    externals: ['axios'],
     module:
     {
         rules: 

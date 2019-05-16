@@ -52,6 +52,7 @@ module.exports =
             filename: "index.html"
         }),
     ],
+    externals: ['axios'],
     module:
     {
         rules: 

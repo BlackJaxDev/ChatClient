@@ -1,7 +1,7 @@
 import React from "react";
 import "./Navbar.css";
 import { Menu, Label, Icon, Image } from "semantic-ui-react";
-import axios from 'axios';
+import axios from "axios";
 
 class Navbar extends React.Component 
 {
@@ -16,9 +16,9 @@ class Navbar extends React.Component
   }
   getNotifCount()
   {
-    axios.get('/user/' + props.user.name, {
+    axios.get('/user/' + this.props.user.name, {
       params: {
-        ID: props.user.id
+        ID: this.props.user.id
       }
     })
     .then(function (response) 
