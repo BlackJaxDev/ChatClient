@@ -32,7 +32,9 @@ module.exports =
     {
         hot:                true,
         port:               3000,
-        historyApiFallback: true,
+        historyApiFallback: {
+            index: '/'
+        },
         inline:             true,
         progress:           true,
         contentBase:        __dirname,
