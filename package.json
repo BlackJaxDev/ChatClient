@@ -8,7 +8,8 @@
     "android": "concurrently \"npm run server\" \"cd client && npm run serve-android\" ",
     "ios": "concurrently \"npm run server\" \"cd client && npm run serve-ios\" ",
     "server": "cd server && npm run start",
-    "start": "npm run web"
+    "start": "npm run web",
+    "install-all": "concurrently \"npm install\" \"cd client && npm install\" \"cd server && npm install\""
   },
   "repository": {
     "type": "git",
