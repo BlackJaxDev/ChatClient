@@ -16,7 +16,7 @@ class Navbar extends React.Component
   }
   getNotifCount()
   {
-    axios.get('/user/' + this.props.user.name, {
+    /*axios.get('/user/' + this.props.user.name, {
       params: {
         ID: this.props.user.id
       }
@@ -33,7 +33,7 @@ class Navbar extends React.Component
     .finally(function ()
     {
 
-    });
+    });*/
     return 0;
   }
   componentDidMount()

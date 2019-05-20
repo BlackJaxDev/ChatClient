@@ -5,7 +5,7 @@ import { BrowserRouter, Route, Switch, Redirect } from 'react-router-dom';
 import { Dimmer, Loader } from "semantic-ui-react";
 import "./App.css";
 import 'normalize.css';
-
+import Firebase, { FirebaseContext } from '../logic/FirebaseApp';
 import Dashboard from './common/Dashboard';
 import Navbar from './common/Navbar';
 import SignIn from './auth/SignIn';
@@ -66,18 +66,20 @@ class App extends React.Component
     }
 
     return (
-      <BrowserRouter> 
-        <Navbar user={this.state.user}/>
-        <Switch>
-          <PrivateRoute exact path="/" component={Dashboard} authenticated={this.state.authenticated}/>
-          <Route exact path="/signin" component={SignIn} authenticated={this.state.authenticated} />
-          <Route exact path="/user/:user" component={Profile} authenticated={this.state.authenticated} />
-          <Route exact path="/server/:server" component={Server} authenticated={this.state.authenticated} />
-          <Route component={Page404} />
-        </Switch>
-        <Redirect from="/user" to="/" />
-        <Redirect from="/server" to="/" />
-      </BrowserRouter>
+      <FirebaseContext.Provider value={new Firebase()}>
+        <BrowserRouter> 
+          <Navbar user={this.state.user}/>
+          <Switch>
+            <PrivateRoute exact path="/" component={Dashboard} authenticated={this.state.authenticated}/>
+            <Route exact path="/signin" component={SignIn} authenticated={this.state.authenticated} />
+            <Route exact path="/user/:user" component={Profile} authenticated={this.state.authenticated} />
+            <Route exact path="/server/:server" component={Server} authenticated={this.state.authenticated} />
+            <Route component={Page404} />
+          </Switch>
+          <Redirect from="/user" to="/" />
+          <Redirect from="/server" to="/" />
+        </BrowserRouter>
+      </FirebaseContext.Provider>
     );
   }
 }

@@ -35,3 +35,4 @@ npm-debug.log
 dist
 coverage/
 ios/main.jsbundle
+firebase-key\.json
