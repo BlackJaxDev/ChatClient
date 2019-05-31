@@ -6,6 +6,7 @@ var express = require('express');
 var mongoose = require('mongoose');
 var bodyParser = require('body-parser');
 var url = require('url');
+var admin = require('firebase-admin');
 
 var app = express();
 var http = require('http').Server(app);
@@ -20,16 +21,18 @@ app.use(bodyParser.urlencoded({ extended: false }));
 var MessageModel = mongoose.model('Message', {
     name : String,
     message : String
-});
+}, 'messages');
 var UserModel = mongoose.model('User', {
-    name : String,
-    id : Number,
-    notifCount : Number,
-});
-var ServerChannelModel = mongoose.model('Server', {
+    uid : String,
+    notifs : [{
+        date: Date,
+        message: String,
+    }],
+}, 'users');
+var ServerModel = mongoose.model('Server', {
     serverName : String,
-    channelName : String,
-});
+    channels : Array,
+}, 'servers');
 //example.com/server/settings/cool
 app.get('/api/server/settings/:name', function(req, res)
 {
@@ -43,16 +46,14 @@ app.get('/api/server/:serverName/:channelName', function(req, res)
     const params = req.params; //params = {serverName:"cool", channelName:"best_channel"}
     var serverName = params.serverName;
     var channelName = params.channelName;
-    ServerChannelModel.find({ serverName: serverName, channelName: channelName });
+    ServerModel.find({ serverName: serverName });
 })
-//example.com/user/bob?id=2265
-app.get('/api/user/:name', function(req, res)
+//example.com/api/user/erg4634fhrtujf
+app.get('/api/user/:uid', function(req, res)
 {
-    const query = req.query; //query = {id:"2265"}
-    const params = req.params; //params = {name:"bob"}
-    var userName = params.name;
-    var userID = query.id;
-    UserModel.find({ name: userName, id: userID });
+    const params = req.params; //params = {uid:"2265"}
+    var user = UserModel.find({ uid: params.uid });
+    res.send(user);
 })
 app.get('/api/messages/:user/:otherUser', (req, res) =>
 {
@@ -81,6 +82,28 @@ app.post('/api/messages/:user/:otherUser', async (req, res) =>
     {
         console.log('Message posted');
     }
+})
+app.post('/api/create/user/:uid', async (req, res) => 
+{
+    var uid = req.params.uid;
+    var user = new UserModel(
+    {
+        uid: uid,
+        notifs: [
+            {
+                date: new Date(),
+                message: "Hello this is a test notification"
+            }
+        ] 
+    });
+
+    await user.save(); //Saves to database
+
+    res.sendStatus(200);
+})
+app.post('/api/create/server', async (req, res) => 
+{
+    
 })
 
 io.on('connection', function(socket)
