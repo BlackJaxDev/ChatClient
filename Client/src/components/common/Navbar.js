@@ -2,6 +2,7 @@ import React from "react";
 import "./Navbar.css";
 import { Menu, Label, Icon, Image } from "semantic-ui-react";
 import axios from "axios";
+import { FirebaseContext } from '../../logic/FirebaseApp';
 
 class Navbar extends React.Component 
 {
@@ -14,17 +15,23 @@ class Navbar extends React.Component
       notifCount: this.getNotifCount(),
     }
   }
-  getNotifCount()
+  logout = () =>
   {
-    /*axios.get('/user/' + this.props.user.name, {
-      params: {
-        ID: this.props.user.id
-      }
-    })
-    .then(function (response) 
+    this.props.firebase.auth().signOut()
+      .then(() => {
+        console.log("Logged out successfully.");
+      })
+      .catch((error) => {
+        console.log("Log out failed.");
+      });
+  }
+  getNotifCount = () =>
+  {
+    axios.get('api/user/' + this.props.firebase.auth().currentUser.uid)
+    .then((response) =>
     {
       console.log(response);
-      return response.data.notifCount;
+      return response.data.notifs.length;
     })
     .catch(function (error)
     {
@@ -33,10 +40,10 @@ class Navbar extends React.Component
     .finally(function ()
     {
 
-    });*/
+    });
     return 0;
   }
-  componentDidMount()
+  componentDidMount = () =>
   {
     this.timer = setInterval(() =>
     {
@@ -44,9 +51,9 @@ class Navbar extends React.Component
       {
         notifCount: this.getNotifCount(),
       }
-    }, 1000)
+    }, 10000)
   }
-  componentWillUnmount()
+  componentWillUnmount = () =>
   {
       clearInterval(this.timer);
   }
@@ -56,8 +63,8 @@ class Navbar extends React.Component
       <div className="component-navbar">
         <Menu inverted>
           <Menu.Item as='a'>
-            <Image avatar spaced='right' src={this.props.iconUrl} />
-            {this.props.username}
+            <Image avatar spaced='right' src={this.props.firebase.auth().currentUser.photoURL} />
+            {this.props.firebase.auth().currentUser.displayName}
           </Menu.Item>
           <Menu.Item as='a'>
           {
@@ -77,16 +84,16 @@ class Navbar extends React.Component
           <Menu.Item as='a'>
             <Icon name='bell outline' />
           </Menu.Item>
-          {this.props.authenticated === true ? (
-            <Menu.Item as='a'>
+          {this.props.firebase.auth().currentUser === null ? (
+            <Menu.Item onClick={() => this.props.history.push('/signin')}>
+            <Icon name="user outline" />
+            Sign In
+            </Menu.Item>
+          ) : (
+            <Menu.Item onClick={this.logout}>
             <Icon name="user outline" />
             Log Out
             </Menu.Item>
-          ) : (
-            <Menu.Item as='a'>
-            <Icon name="user outline" />
-            Sign In
-          </Menu.Item>
           )}
 
         </Menu>

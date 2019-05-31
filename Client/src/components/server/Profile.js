@@ -7,11 +7,15 @@ class Profile extends React.Component
   {
     super(props);
   }
+  componentWillMount()
+  {
+
+  }
   render() 
   {
     return (
       <div className="component-profile">
-      
+      User Profile
       </div>
     );
   }

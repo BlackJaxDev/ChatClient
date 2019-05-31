@@ -1,6 +1,5 @@
 import React from 'react';
-import app from "firebase/app";
-import 'firebase/auth';
+import firebase from "firebase/app";
 import 
 {
     FIREBASE_KEY, 
@@ -21,30 +20,7 @@ const config =
   messagingSenderId: FIREBASE_SENDER_ID
 };
 
-class Firebase
-{
-  constructor()
-  {
-    app.initializeApp(config);
-    this.auth = app.auth();
-  }
-
-  createUserWithEmailAndPassword = (email, password) =>
-    this.auth.createUserWithEmailAndPassword(email, password);
-
-  signInWithEmailAndPassword = (email, password) =>
-    this.auth.signInWithEmailAndPassword(email, password);
-
-  signOut = () => 
-    this.auth.signOut();
-
-  passwordReset = email => 
-    this.auth.sendPasswordResetEmail(email);
-
-  passwordUpdate = password =>
-    this.auth.currentUser.updatePassword(password);
-}
-
+const Firebase = firebase.initializeApp(config);
 const FirebaseContext = React.createContext(null);
 
 export default Firebase;

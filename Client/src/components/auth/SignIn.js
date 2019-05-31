@@ -1,83 +1,80 @@
 import React from "react";
-import { Divider, Grid, Segment, Form, Button } from 'semantic-ui-react';
+import { Grid, Segment, Form, Button, Message } from 'semantic-ui-react';
 import "./SignIn.css";
-import FirebaseApp from "../../logic/FirebaseApp";
+import { FirebaseContext } from '../../logic/FirebaseApp';
+import firebase from 'firebase/app';
+import 'firebase/auth';
+import { Link } from 'react-router-dom';
+import authMessages from './authMessages.json';
 
 class SignIn extends React.Component 
 {
   state = 
   {
     email: '',
-    password: ''
+    password: '',
+    message: null,
   }
+
   constructor(props) 
   {
     super(props);
-    this.handleSignUp = this.handleSignUp.bind(this);
-    this.handleSignIn = this.handleSignIn.bind(this);
-    this.handleTextChange = this.handleTextChange.bind(this);
   }
-  handleTextChange = (e) => {
+
+  handleTextChange = (e) => 
+  {
     this.setState({ [event.target.name]: e.target.value })
   }
-  handleSignIn(event)
+  handleSignIn = (event) =>
   {
     event.preventDefault();
-    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION)
-    .then(function() 
+    this.props.firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION)
+    .then(() =>
     {
-      FirebaseApp.auth().signInWithEmailAndPassword(this.state.email, this.state.password);
-      this.props.history.push("/");
-    })
-    .catch(function(error) 
-    {
-      //var errorCode = error.code;
-      var errorMessage = error.message;
-      alert(errorMessage);
-    });
-  }
-  handleSignUp(event)
-  {
-    event.preventDefault();
-    firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION)
-    .then(function() 
-    {
-      FirebaseApp.auth().createUserWithEmailAndPassword(this.state.email, this.state.password);
-      this.props.history.push("/");
-    })
-    .catch(function(error) 
-    {
-      //var errorCode = error.code;
-      var errorMessage = error.message;
-      alert(errorMessage);
+      this.props.firebase.auth().signInWithEmailAndPassword(this.state.email, this.state.password).then(() =>
+      {
+        console.log("Signed in successfully.");
+      })
+      .catch((error) =>
+      {
+        var errorCode = error.code;
+        var msg = errorCode + ': ' +  error.message;
+        Object.keys(authMessages).forEach(function(code) {
+          if (code === errorCode)
+            msg = authMessages[code];
+        });
+        this.setState({message: msg});
+        console.log(this.state.message);
+      });
     });
   }
   render() 
   {
     return (
-      this.props.authenticated ? (
-        <Redirect to="/"/>
-      ) : (
-        <div className="component-sign-in">
-          <Form onSubmit={this.handleSignIn}>
-            <Form.Input icon='user' iconPosition='left' name="email" label='Email' placeholder='Email' onChange={this.handleTextChange} />
-            <Form.Input icon='lock' iconPosition='left' name="password" label='Password' placeholder='Password' type='password' onChange={this.handleTextChange}  />
-            <Segment placeholder>
-              <Grid columns={2} relaxed='very' stackable>
-                <Grid.Column>
+      <div className="component-sign-in">
+        <Segment inverted placeholder>
+          <Grid>
+            <Grid.Row centered>
+              <Grid.Column width={6} verticalAlign='middle'>
+                <Form inverted onSubmit={this.handleSignIn}>
+                  <Form.Input icon='mail outline' iconPosition='left' name="email" label='Email' onChange={this.handleTextChange} />
+                  <Form.Input icon='lock' iconPosition='left' name="password" label='Password' type='password' onChange={this.handleTextChange}  />
                   <Button content='Log In' type="submit" primary />
-                </Grid.Column>
-                <Grid.Column verticalAlign='middle'>
-                  <Button content='Create Account' onClick={this.handleSignUp} />
-                </Grid.Column>
-              </Grid>
-              <Divider vertical>Or</Divider>
-            </Segment>
-          </Form>
-        </div>
-      )
+                </Form>
+                Or <Link to='/signup'>sign up</Link>
+                {this.state.message != null && 
+                <React.Fragment>
+                  <Message warning>
+                    <Message.Header>What the heckadoodle?</Message.Header>
+                    <p>{this.state.message}</p>
+                  </Message>
+                </React.Fragment>}
+              </Grid.Column>
+            </Grid.Row>
+          </Grid>
+        </Segment>
+      </div>
     );
   }
 }
-
 export default SignIn;
