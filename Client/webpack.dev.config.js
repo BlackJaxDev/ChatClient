@@ -130,7 +130,7 @@ module.exports =
                 ]
             },
             {
-                test: /\.(png|jpg)$/,
+                test: /\.(png|jpg|svg|gif|woff|woff2|eot|ttf|otf)$/,
                 use: 
                 [
                     { 
@@ -140,6 +140,20 @@ module.exports =
                             limit: 8192,
                         } 
                     },
+                ]
+            },
+            {
+                test: /\.(csv|tsv)$/,
+                use: 
+                [
+                    'csv-loader'
+                ]
+            },
+            {
+                test: /\.xml$/,
+                use: 
+                [
+                    'xml-loader'
                 ]
             }
         ]
