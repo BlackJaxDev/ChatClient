@@ -33,14 +33,15 @@ var ServerModel = mongoose.model('Server', {
     serverName : String,
     channels : Array,
 }, 'servers');
-//example.com/server/settings/cool
+
+//example.com/api/server/settings/cool
 app.get('/api/server/settings/:name', function(req, res)
 {
     const params = req.params; //params = {name:"cool"}
     var serverName = params.name;
     ServerChannelModel.find({ serverName: serverName, channelName: channelName });
 })
-//example.com/server/cool/best_channel
+//example.com/api/server/cool/best_channel
 app.get('/api/server/:serverName/:channelName', function(req, res)
 {
     const params = req.params; //params = {serverName:"cool", channelName:"best_channel"}
@@ -51,7 +52,7 @@ app.get('/api/server/:serverName/:channelName', function(req, res)
 //example.com/api/user/erg4634fhrtujf
 app.get('/api/user/:uid', function(req, res)
 {
-    const params = req.params; //params = {uid:"2265"}
+    const params = req.params; //params = {uid:"erg4634fhrtujf"}
     var user = UserModel.find({ uid: params.uid });
     res.send(user);
 })
@@ -101,7 +102,7 @@ app.post('/api/create/user/:uid', async (req, res) =>
 
     res.sendStatus(200);
 })
-app.post('/api/create/server', async (req, res) => 
+app.post('/api/create/server/:serverName/:uidOwner', async (req, res) => 
 {
     
 })
