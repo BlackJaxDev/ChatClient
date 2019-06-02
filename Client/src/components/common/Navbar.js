@@ -27,7 +27,7 @@ class Navbar extends React.Component
   }
   getNotifCount = () =>
   {
-    axios.get('api/user/' + this.props.firebase.auth().currentUser.uid)
+    axios.get('http://localhost:3001/api/user/' + this.props.firebase.auth().currentUser.uid)
     .then((response) =>
     {
       console.log(response);

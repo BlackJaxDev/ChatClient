@@ -35,11 +35,15 @@ class SignUp extends React.Component
     .then(() =>
     {
       this.props.firebase.auth().createUserWithEmailAndPassword(this.state.email, this.state.password)
-      .then((user) => 
+      .then(() =>
       {
-        if (user)
-        {
-          axios.post('/api/create/user/' + user.uid)
+        console.log("Sending email verification.");
+        firebase.auth().currentUser.sendEmailVerification();
+      })
+      .then(() => 
+      {
+        console.log("Creating user in database.");
+        axios.post('http://localhost:3001/api/create/user/' + firebase.auth().currentUser.uid)
           .then((response) =>
           {
             console.log(response);
@@ -48,14 +52,15 @@ class SignUp extends React.Component
           {
             console.log(error);
           });
-          user.updateProfile(
+          console.log("Updating profile.");
+          firebase.auth().currentUser.updateProfile(
           {
             displayName: this.state.displayName,
             photoURL: this.state.photoURL
           });
-        }
-        this.props.history.push("/");
-      }).catch((error) =>
+          this.props.history.push("/");
+      })
+      .catch((error) =>
       {
         var errorCode = error.code;
         var msg = errorCode + ': ' + error.message;
