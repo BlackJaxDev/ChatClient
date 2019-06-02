@@ -7,8 +7,11 @@ var mongoose = require('mongoose');
 var bodyParser = require('body-parser');
 var url = require('url');
 var admin = require('firebase-admin');
+var cors = require('cors')
 
 var app = express();
+app.use(cors());
+
 var http = require('http').Server(app);
 var io = require('socket.io')(http);
 
