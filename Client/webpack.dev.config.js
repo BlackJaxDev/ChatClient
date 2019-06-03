@@ -12,7 +12,7 @@ module.exports =
     mode: 'development',
     entry: 
     [
-        'webpack/hot/only-dev-server', //Webpack server
+        //'webpack/hot/only-dev-server', //Webpack server
         './src/index.js' //File to convert
     ],
     output: 
@@ -22,7 +22,7 @@ module.exports =
         path: path.join(__dirname, "dev"), //Output location relative to computer
     },
     cache: false,
-    devtool: false,
+    devtool: 'inline-source-map',
     optimization: 
     {
         minimize: false,
@@ -45,6 +45,7 @@ module.exports =
     },
     plugins:
     [
+        //new webpack.ProgressPlugin(),
         new webpack.HotModuleReplacementPlugin(),
         new webpack.LoaderOptionsPlugin({ debug: true }),
         new HtmlWebpackPlugin(
@@ -53,6 +54,7 @@ module.exports =
             template: "public/index.web.html",
             filename: "index.html"
         }),
+        //new webpack.NoEmitOnErrorsPlugin(),
     ],
     externals: ['axios'],
     module:
@@ -96,10 +98,12 @@ module.exports =
                 ],
             },
             {
-                test: /\.sass/,
+                test: /\.(scss|sass)$/,
                 use: 
                 [
-                    { loader: 'style-loader' },
+                    {
+                        loader: 'style-loader' 
+                    },
                     { 
                         loader: 'css-loader',
                         options: 
