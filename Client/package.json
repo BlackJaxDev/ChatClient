@@ -84,7 +84,7 @@
     "html-loader": "^0.5.5",
     "http": "0.0.0",
     "keymirror": "latest",
-    "mongoose": "^5.5.5",
+    "mongoose": "^5.7.5",
     "normalize.css": "^8.0.1",
     "object-assign": "^4.1.1",
     "prop-types": "^15.7.2",
