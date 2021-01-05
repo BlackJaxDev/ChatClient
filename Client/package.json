@@ -64,7 +64,7 @@
     "@babel/plugin-proposal-class-properties": "^7.4.4",
     "@hot-loader/react-dom": "^16.8.6",
     "@okta/okta-react": "^1.2.0",
-    "axios": "^0.18.0",
+    "axios": "^0.21.1",
     "babel-plugin-dotenv": "^0.1.1",
     "body-parser": "^1.19.0",
     "bufferutil": "^4.0.1",
