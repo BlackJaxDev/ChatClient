@@ -4,8 +4,18 @@ const Message = require('../models/Message');
 module.exports = function(io) {
   const router = express.Router();
 
-  router.get('/:user/:otherUser', (req, res) => {
-    Message.find({}, (err, messages) => {
+    const { user, otherUser } = req.params;
+    Message.find({
+      $or: [
+        { from: user, to: otherUser },
+        { from: otherUser, to: user }
+      ]
+    }, (err, messages) => {
+      if (err) {
+        res.sendStatus(500);
+        console.log('error', err);
+        return;
+      }
       res.send(messages);
     });
   });
