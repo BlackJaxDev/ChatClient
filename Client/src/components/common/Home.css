@@ -1,4 +1,261 @@
-
 .component-home {
-    
+  background: linear-gradient(180deg, #f9fafc 0%, #eef2f7 100%);
+  min-height: calc(100vh - 6rem);
+  padding: 2.5rem 3rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.home-title.ui.header {
+  margin-bottom: 0;
+}
+
+.home-layout-grid {
+  margin: 0 !important;
+}
+
+.home-layout-grid > .column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.home-server-menu.ui.menu {
+  border-radius: 16px;
+  border: none;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  padding: 0.5rem 0;
+}
+
+.home-server-menu.ui.menu .item {
+  border: none !important;
+  padding: 1rem 1.35rem;
+  display: flex !important;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.home-server-menu.ui.menu .item.active {
+  background: #ffffff;
+  box-shadow: inset 4px 0 0 #2185d0;
+}
+
+.home-server-menu.ui.menu .item:not(.active):hover {
+  background: rgba(33, 133, 208, 0.08);
+}
+
+.server-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.server-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.server-meta span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.home-explore.ui.segment {
+  border-radius: 16px !important;
+  border: none !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+  background: #ffffff !important;
+}
+
+.home-explore .ui.header {
+  margin: 0;
+}
+
+.home-explore .ui.header .sub.header {
+  margin-top: 0.35rem;
+  color: #6b7280;
+}
+
+.home-channel-panel.ui.segment {
+  border-radius: 16px !important;
+  border: none !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  background: #ffffff !important;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.channel-panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.channel-panel-header p {
+  margin: 0;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.channel-panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  color: #6b7280;
+}
+
+.channel-panel-meta span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.channel-panel-unread {
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+.home-channel-list {
+  margin: 0;
+}
+
+.home-channel-list .item {
+  display: flex !important;
+  align-items: center;
+  gap: 0.85rem;
+  border-radius: 12px !important;
+  padding: 0.9rem 1rem !important;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-channel-list .item:not(:last-child) {
+  margin-bottom: 0.4rem;
+}
+
+.home-channel-list .item.active,
+.home-channel-list .item:focus,
+.home-channel-list .item:hover {
+  background: #f3f8ff !important;
+  box-shadow: inset 0 0 0 1px #2185d0;
+  outline: none;
+}
+
+.home-channel-list .item .header {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.home-channel-list .item .description {
+  color: #6b7280;
+}
+
+.home-channel-detail-card.ui.segment {
+  border-radius: 16px !important;
+  border: none !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  background: #ffffff !important;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.channel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.channel-topic {
+  margin: 0;
+  color: #4b5563;
+  font-size: 1rem;
+}
+
+.channel-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: 0.95rem;
+  color: #6b7280;
+}
+
+.channel-stats span {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.channel-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.channel-activity-entry {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.activity-author {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.activity-preview {
+  color: #374151;
+  margin-top: 0.35rem;
+}
+
+.activity-meta {
+  color: #6b7280;
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+}
+
+.channel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.home-empty-state {
+  text-align: center;
+  color: #6b7280;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem;
+}
+
+@media (max-width: 992px) {
+  .component-home {
+    padding: 2rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .component-home {
+    padding: 1.5rem;
+  }
+
+  .channel-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
