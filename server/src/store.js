@@ -1,143 +1,133 @@
-const fs = require('fs');
-const path = require('path');
 const { nanoid } = require('nanoid');
+const { getDb } = require('./db');
+const { MAX_MESSAGES_PER_CHANNEL } = require('./defaultState');
 
-const MAX_MESSAGES_PER_CHANNEL = 200;
-
-function createDefaultState() {
-  const now = new Date().toISOString();
-  const systemAuthor = {
-    id: 'system',
-    name: 'System',
-    color: '#94a3b8',
-  };
-
-  const welcomeMessage = (content, channelId, serverId) => ({
-    id: nanoid(),
-    serverId,
-    channelId,
-    author: systemAuthor,
-    content,
-    timestamp: now,
-    transport: 'server',
-    system: true,
-  });
-
-  const communityId = nanoid();
-  const collabId = nanoid();
-
+function mapMessageRow(row) {
+  if (!row) {
+    return null;
+  }
   return {
-    servers: [
-      {
-        id: communityId,
-        name: 'Welcome Hub',
-        description: 'A friendly place to meet everyone trying the demo.',
-        accentColor: '#5865F2',
-        icon: 'W',
-        channels: [
-          {
-            id: nanoid(),
-            name: 'general',
-            topic: 'Chat about anything and meet new friends',
-            messages: [
-              welcomeMessage('Welcome to the ChatClient demo! This space is powered by the built-in real-time server.', 'general', communityId),
-              welcomeMessage('Switch the transport toggle to try pure peer-to-peer messaging with WebRTC data channels.', 'general', communityId),
-            ],
-          },
-          {
-            id: nanoid(),
-            name: 'help-desk',
-            topic: 'Ask questions about the project or share feedback',
-            messages: [
-              welcomeMessage('Need help getting started? Drop a message in here.', 'help-desk', communityId),
-            ],
-          },
-        ],
-      },
-      {
-        id: collabId,
-        name: 'Collaboration Lab',
-        description: 'A sandbox server where you can experiment with channels and peer-to-peer rooms.',
-        accentColor: '#2F3136',
-        icon: 'C',
-        channels: [
-          {
-            id: nanoid(),
-            name: 'ideas',
-            topic: 'Share ideas and inspiration',
-            messages: [
-              welcomeMessage('Invite a teammate and brainstorm together in peer-to-peer mode!', 'ideas', collabId),
-            ],
-          },
-          {
-            id: nanoid(),
-            name: 'voice-text',
-            topic: 'Coordinate audio/video sessions (text only in this demo)',
-            messages: [],
-          },
-        ],
-      },
-    ],
+    id: row.id,
+    serverId: row.server_id,
+    channelId: row.channel_id,
+    author: {
+      id: row.author_id || 'system',
+      name: row.author_name,
+      color: row.author_color || '#5865F2',
+      avatarUrl: row.author_avatar_url || '',
+    },
+    content: row.content,
+    timestamp: row.timestamp,
+    transport: row.transport,
+    system: Boolean(row.system),
   };
 }
 
 class Store {
-  constructor(filePath) {
-    this.filePath = filePath;
-    this.state = loadState(filePath);
+  constructor(databaseFile) {
+    this.db = getDb(databaseFile);
+    this.channelCountStmt = this.db.prepare('SELECT COUNT(*) as count FROM messages WHERE channel_id = ?');
+    this.lastMessageStmt = this.db.prepare(
+      'SELECT * FROM messages WHERE channel_id = ? ORDER BY timestamp DESC LIMIT 1'
+    );
+    this.serverOverviewStmt = this.db.prepare(
+      'SELECT id, name, description, accent_color AS accentColor, icon FROM servers ORDER BY name'
+    );
+    this.serverByIdStmt = this.db.prepare(
+      'SELECT id, name, description, accent_color AS accentColor, icon FROM servers WHERE id = ?'
+    );
+    this.channelsByServerStmt = this.db.prepare(
+      'SELECT id, server_id AS serverId, name, topic FROM channels WHERE server_id = ? ORDER BY name'
+    );
+    this.channelByIdsStmt = this.db.prepare(
+      'SELECT id, server_id AS serverId, name, topic FROM channels WHERE server_id = ? AND id = ?'
+    );
+    this.messagesForChannelStmt = this.db.prepare(
+      'SELECT * FROM messages WHERE server_id = ? AND channel_id = ? ORDER BY timestamp DESC LIMIT ?'
+    );
+    this.insertServerStmt = this.db.prepare(
+      'INSERT INTO servers (id, name, description, accent_color, icon) VALUES (@id, @name, @description, @accentColor, @icon)'
+    );
+    this.insertChannelStmt = this.db.prepare(
+      'INSERT INTO channels (id, server_id, name, topic) VALUES (@id, @serverId, @name, @topic)'
+    );
+    this.insertMessageStmt = this.db.prepare(
+      `INSERT INTO messages (
+        id, server_id, channel_id, author_id, author_name, author_color, author_avatar_url,
+        content, timestamp, transport, system
+      ) VALUES (
+        @id, @serverId, @channelId, @authorId, @authorName, @authorColor, @authorAvatarUrl,
+        @content, @timestamp, @transport, @system
+      )`
+    );
+    this.pruneMessagesStmt = this.db.prepare(
+      `DELETE FROM messages WHERE id IN (
+        SELECT id FROM messages WHERE channel_id = ? ORDER BY timestamp ASC LIMIT ?
+      )`
+    );
+  }
+
+  mapChannelRow(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      serverId: row.serverId,
+      name: row.name,
+      topic: row.topic || '',
+    };
   }
 
   getServersOverview() {
-    return this.state.servers.map((server) => ({
-      id: server.id,
-      name: server.name,
-      description: server.description,
-      accentColor: server.accentColor,
-      icon: server.icon,
-      channels: server.channels.map((channel) => ({
-        id: channel.id,
-        name: channel.name,
-        topic: channel.topic,
-        lastMessage: channel.messages[channel.messages.length - 1] || null,
-        messageCount: channel.messages.length,
-      })),
+    const servers = this.serverOverviewStmt.all();
+    return servers.map((server) => ({
+      ...server,
+      channels: this.channelsByServerStmt.all(server.id).map((channel) => {
+        const countRow = this.channelCountStmt.get(channel.id) || { count: 0 };
+        const messageCount = countRow.count || 0;
+        const lastMessage = mapMessageRow(this.lastMessageStmt.get(channel.id));
+        return {
+          id: channel.id,
+          name: channel.name,
+          topic: channel.topic || '',
+          lastMessage,
+          messageCount,
+        };
+      }),
     }));
   }
 
   getServerSummary(serverId) {
-    const server = this.state.servers.find((s) => s.id === serverId);
-    if (!server) return null;
-    return {
-      id: server.id,
-      name: server.name,
-      description: server.description,
-      accentColor: server.accentColor,
-      icon: server.icon,
-      channels: server.channels.map((channel) => ({
+    const server = this.serverByIdStmt.get(serverId);
+    if (!server) {
+      return null;
+    }
+    const channels = this.channelsByServerStmt.all(serverId).map((channel) => {
+      const countRow = this.channelCountStmt.get(channel.id) || { count: 0 };
+      const messageCount = countRow.count || 0;
+      const lastMessage = mapMessageRow(this.lastMessageStmt.get(channel.id));
+      return {
         id: channel.id,
         name: channel.name,
-        topic: channel.topic,
-        lastMessage: channel.messages[channel.messages.length - 1] || null,
-        messageCount: channel.messages.length,
-      })),
+        topic: channel.topic || '',
+        lastMessage,
+        messageCount,
+      };
+    });
+    return {
+      ...server,
+      channels,
     };
   }
 
   getChannel(serverId, channelId) {
-    const server = this.state.servers.find((s) => s.id === serverId);
-    if (!server) return null;
-    const channel = server.channels.find((c) => c.id === channelId);
-    if (!channel) return null;
-    return channel;
+    const row = this.channelByIdsStmt.get(serverId, channelId);
+    return this.mapChannelRow(row);
   }
 
   getMessages(serverId, channelId, limit = 50) {
-    const channel = this.getChannel(serverId, channelId);
-    if (!channel) return [];
-    if (!limit || channel.messages.length <= limit) {
-      return channel.messages.slice();
-    }
-    return channel.messages.slice(channel.messages.length - limit);
+    const rowLimit = Math.max(1, Math.min(limit || MAX_MESSAGES_PER_CHANNEL, MAX_MESSAGES_PER_CHANNEL));
+    const rows = this.messagesForChannelStmt.all(serverId, channelId, rowLimit);
+    return rows.reverse().map(mapMessageRow);
   }
 
   createServer({ name, description, accentColor, icon }) {
@@ -147,27 +137,39 @@ class Store {
       description: description || '',
       accentColor: accentColor || '#5865F2',
       icon: icon || name.slice(0, 1).toUpperCase(),
-      channels: [],
     };
-    this.state.servers.push(server);
-    this.persist();
-    return server;
+    this.insertServerStmt.run({
+      id: server.id,
+      name: server.name,
+      description: server.description,
+      accentColor: server.accentColor,
+      icon: server.icon,
+    });
+    return { ...server, channels: [] };
   }
 
   createChannel(serverId, { name, topic }) {
-    const server = this.state.servers.find((s) => s.id === serverId);
+    const server = this.serverByIdStmt.get(serverId);
     if (!server) {
       throw new Error('Server not found');
     }
     const channel = {
       id: nanoid(),
+      serverId,
       name,
       topic: topic || '',
-      messages: [],
     };
-    server.channels.push(channel);
-    this.persist();
-    return channel;
+    this.insertChannelStmt.run({
+      id: channel.id,
+      serverId,
+      name: channel.name,
+      topic: channel.topic,
+    });
+    return {
+      id: channel.id,
+      name: channel.name,
+      topic: channel.topic,
+    };
   }
 
   addMessage(serverId, channelId, message) {
@@ -175,62 +177,39 @@ class Store {
     if (!channel) {
       throw new Error('Channel not found');
     }
-    const enriched = {
+    const now = new Date().toISOString();
+    const record = {
       id: message.id || nanoid(),
       serverId,
       channelId,
-      author: message.author,
+      authorId: message.author?.id || null,
+      authorName: message.author?.name || 'System',
+      authorColor: message.author?.color || '#5865F2',
+      authorAvatarUrl: message.author?.avatarUrl || '',
       content: message.content,
-      timestamp: message.timestamp || new Date().toISOString(),
+      timestamp: message.timestamp || now,
       transport: message.transport || 'server',
-      system: Boolean(message.system),
+      system: message.system ? 1 : 0,
     };
-    channel.messages.push(enriched);
-    if (channel.messages.length > MAX_MESSAGES_PER_CHANNEL) {
-      channel.messages.splice(0, channel.messages.length - MAX_MESSAGES_PER_CHANNEL);
-    }
-    this.persist();
-    return enriched;
-  }
 
-  persist() {
-    try {
-      fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-      fs.writeFileSync(this.filePath, JSON.stringify(this.state, null, 2));
-    } catch (error) {
-      console.error('Failed to persist chat state', error);
-    }
-  }
-}
+    const insert = this.db.transaction((payload) => {
+      this.insertMessageStmt.run(payload);
+      const countRow = this.channelCountStmt.get(channelId) || { count: 0 };
+      const currentCount = countRow.count || 0;
+      if (currentCount > MAX_MESSAGES_PER_CHANNEL) {
+        const toDelete = currentCount - MAX_MESSAGES_PER_CHANNEL;
+        this.pruneMessagesStmt.run(channelId, toDelete);
+      }
+    });
 
-function loadState(filePath) {
-  try {
-    if (!fs.existsSync(filePath)) {
-      const defaultState = createDefaultState();
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, JSON.stringify(defaultState, null, 2));
-      return defaultState;
-    }
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const parsed = JSON.parse(content);
-    if (!parsed.servers) {
-      throw new Error('Malformed state file');
-    }
-    return parsed;
-  } catch (error) {
-    console.error('Failed to load state file. Falling back to defaults.', error);
-    const fallback = createDefaultState();
-    try {
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2));
-    } catch (persistError) {
-      console.error('Failed to persist fallback state', persistError);
-    }
-    return fallback;
+    insert(record);
+    const insertedRow = this.db
+      .prepare('SELECT * FROM messages WHERE id = ?')
+      .get(record.id);
+    return mapMessageRow(insertedRow);
   }
 }
 
 module.exports = {
   Store,
-  createDefaultState,
 };
