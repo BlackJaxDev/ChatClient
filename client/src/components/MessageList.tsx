@@ -52,8 +52,18 @@ export function MessageList({ messages, currentUserId }: MessageListProps) {
             })}
           >
             {!isSystem && (
-              <div className="message-list__avatar" style={{ backgroundColor: avatarColor }} aria-hidden={true}>
-                {initials}
+              <div
+                className={clsx('message-list__avatar', {
+                  'message-list__avatar--image': Boolean(message.author.avatarUrl),
+                })}
+                style={message.author.avatarUrl ? undefined : { backgroundColor: avatarColor }}
+                aria-hidden={true}
+              >
+                {message.author.avatarUrl ? (
+                  <img src={message.author.avatarUrl} alt="" />
+                ) : (
+                  initials
+                )}
               </div>
             )}
             <div className="message-list__body">
