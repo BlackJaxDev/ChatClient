@@ -1,9 +1,0 @@
-{
-    "auth/weak-password" : "Your password isn't strong enough.",
-    "auth/invalid-email" : "Your email is not a valid email address.",
-    "auth/user-not-found" : "This account does not exist.",
-    "auth/user-disabled" : "This account is disabled.",
-    "auth/wrong-password" : "Password is incorrect.",
-    "auth/operation-not-allowed" : "Not a valid operation.",
-    "auth/email-already-in-use" : "That email is already tied to an account."
-}
