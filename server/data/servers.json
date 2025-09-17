@@ -1,0 +1,105 @@
+{
+  "servers": [
+    {
+      "id": "welcome-hub",
+      "name": "Welcome Hub",
+      "description": "A friendly place to meet everyone trying the demo.",
+      "accentColor": "#5865F2",
+      "icon": "W",
+      "channels": [
+        {
+          "id": "welcome-general",
+          "name": "general",
+          "topic": "Chat about anything and meet new friends",
+          "messages": [
+            {
+              "id": "msg-welcome-general-1",
+              "serverId": "welcome-hub",
+              "channelId": "welcome-general",
+              "author": {
+                "id": "system",
+                "name": "System",
+                "color": "#94a3b8"
+              },
+              "content": "Welcome to the ChatClient demo! This space is powered by the built-in real-time server.",
+              "timestamp": "2024-01-01T00:00:00.000Z",
+              "transport": "server",
+              "system": true
+            },
+            {
+              "id": "msg-welcome-general-2",
+              "serverId": "welcome-hub",
+              "channelId": "welcome-general",
+              "author": {
+                "id": "system",
+                "name": "System",
+                "color": "#94a3b8"
+              },
+              "content": "Switch the transport toggle to try pure peer-to-peer messaging with WebRTC data channels.",
+              "timestamp": "2024-01-01T00:00:10.000Z",
+              "transport": "server",
+              "system": true
+            }
+          ]
+        },
+        {
+          "id": "welcome-help-desk",
+          "name": "help-desk",
+          "topic": "Ask questions about the project or share feedback",
+          "messages": [
+            {
+              "id": "msg-welcome-help",
+              "serverId": "welcome-hub",
+              "channelId": "welcome-help-desk",
+              "author": {
+                "id": "system",
+                "name": "System",
+                "color": "#94a3b8"
+              },
+              "content": "Need help getting started? Drop a message in here.",
+              "timestamp": "2024-01-01T00:00:20.000Z",
+              "transport": "server",
+              "system": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "collaboration-lab",
+      "name": "Collaboration Lab",
+      "description": "A sandbox server where you can experiment with channels and peer-to-peer rooms.",
+      "accentColor": "#2F3136",
+      "icon": "C",
+      "channels": [
+        {
+          "id": "collab-ideas",
+          "name": "ideas",
+          "topic": "Share ideas and inspiration",
+          "messages": [
+            {
+              "id": "msg-collab-ideas",
+              "serverId": "collaboration-lab",
+              "channelId": "collab-ideas",
+              "author": {
+                "id": "system",
+                "name": "System",
+                "color": "#94a3b8"
+              },
+              "content": "Invite a teammate and brainstorm together in peer-to-peer mode!",
+              "timestamp": "2024-01-01T00:00:30.000Z",
+              "transport": "server",
+              "system": true
+            }
+          ]
+        },
+        {
+          "id": "collab-voice-text",
+          "name": "voice-text",
+          "topic": "Coordinate audio/video sessions (text only in this demo)",
+          "messages": []
+        }
+      ]
+    }
+  ]
+}
