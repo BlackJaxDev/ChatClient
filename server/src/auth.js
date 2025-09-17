@@ -121,4 +121,5 @@ module.exports = {
   AUTH_COOKIE_NAME,
   DEFAULT_SESSION_TTL,
   createAuthHandlers,
+  parseCookies,
 };

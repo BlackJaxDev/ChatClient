@@ -7,7 +7,7 @@ const { nanoid } = require('nanoid');
 const { Store } = require('./store');
 const { UserStore } = require('./userStore');
 const { SessionStore } = require('./sessionStore');
-const { createAuthHandlers } = require('./auth');
+const { AUTH_COOKIE_NAME, createAuthHandlers, parseCookies } = require('./auth');
 
 const PORT = process.env.PORT || 3001;
 const DATA_FILE = path.join(__dirname, '..', 'data', 'servers.json');
@@ -99,6 +99,30 @@ app.get('/api/me', auth.requireAuth, (req, res) => {
   return res.json({ user: req.user });
 });
 
+app.patch('/api/me', auth.requireAuth, (req, res) => {
+  const { displayName, avatarUrl, accentColor, status } = req.body || {};
+  try {
+    const updates = {};
+    if (typeof displayName === 'string') {
+      updates.displayName = normalizeString(displayName);
+    }
+    if (typeof avatarUrl === 'string') {
+      updates.avatarUrl = normalizeString(avatarUrl);
+    }
+    const normalizedAccent = normalizeAccent(accentColor);
+    if (normalizedAccent) {
+      updates.accentColor = normalizedAccent;
+    }
+    if (typeof status === 'string') {
+      updates.status = status;
+    }
+    const updated = userStore.updateProfile(req.user.id, updates);
+    return res.json({ user: updated });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Failed to update profile' });
+  }
+});
+
 app.get('/api/servers', (req, res) => {
   res.json({ servers: store.getServersOverview() });
 });
@@ -149,24 +173,18 @@ app.get('/api/servers/:serverId/channels/:channelId/messages', (req, res) => {
   res.json({ messages });
 });
 
-app.post('/api/servers/:serverId/channels/:channelId/messages', (req, res) => {
+app.post('/api/servers/:serverId/channels/:channelId/messages', auth.requireAuth, (req, res) => {
   const { serverId, channelId } = req.params;
-  const { author, content, transport, timestamp, id } = req.body || {};
-  if (!author || !author.name || !author.id) {
-    return res.status(400).json({ error: 'Author information is required' });
-  }
-  if (!content || !content.trim()) {
+  const { content, transport, timestamp, id } = req.body || {};
+  const normalizedContent = typeof content === 'string' ? content.trim() : '';
+  if (!normalizedContent) {
     return res.status(400).json({ error: 'Message content is required' });
   }
   try {
     const message = store.addMessage(serverId, channelId, {
       id: id || nanoid(),
-      author: {
-        id: author.id,
-        name: author.name,
-        color: author.color || '#5865F2',
-      },
-      content: content.trim(),
+      author: buildAuthorFromUser(req.user),
+      content: normalizedContent,
       transport: transport || 'server',
       timestamp,
     });
@@ -179,46 +197,159 @@ app.post('/api/servers/:serverId/channels/:channelId/messages', (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: true,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 
-const clients = new Map(); // socketId -> profile
-const channelMembers = new Map(); // room -> Set<socketId>
+const clients = new Map(); // socketId -> member profile
+const socketsByUser = new Map(); // userId -> Set<socketId>
+const channelMembers = new Map(); // room -> Map<userId, Set<socketId>>
+
+io.use((socket, next) => {
+  try {
+    const cookies = parseCookies(socket.handshake.headers.cookie || '');
+    const token = cookies[AUTH_COOKIE_NAME];
+    if (!token) {
+      return next(new Error('Authentication required'));
+    }
+    const session = sessionStore.getSession(token);
+    if (!session) {
+      return next(new Error('Authentication required'));
+    }
+    const user = userStore.findById(session.userId);
+    if (!user) {
+      sessionStore.deleteSession(token);
+      return next(new Error('User not found'));
+    }
+    socket.data = socket.data || {};
+    socket.data.user = userStore.toPublic(user);
+    socket.data.authToken = token;
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+});
 
 function roomKey(serverId, channelId) {
   return `${serverId}:${channelId}`;
 }
 
-function ensureRoomSet(room) {
+function ensureRoomMap(room) {
   if (!channelMembers.has(room)) {
-    channelMembers.set(room, new Set());
+    channelMembers.set(room, new Map());
   }
   return channelMembers.get(room);
 }
 
-function getMemberProfile(socketId) {
-  const profile = clients.get(socketId);
-  if (!profile) {
+function listRoomSocketIds(room) {
+  const membership = channelMembers.get(room);
+  if (!membership) {
+    return [];
+  }
+  const sockets = [];
+  for (const socketIds of membership.values()) {
+    socketIds.forEach((id) => sockets.push(id));
+  }
+  return sockets;
+}
+
+function buildAuthorFromUser(user) {
+  if (!user) {
     return {
-      socketId,
-      userId: socketId,
-      username: 'Guest',
-      color: '#5865F2',
+      id: 'system',
+      name: 'System',
+      color: '#94a3b8',
     };
   }
   return {
-    socketId,
-    userId: profile.userId,
-    username: profile.username,
-    color: profile.color,
+    id: user.id,
+    name: user.displayName || user.email,
+    color: user.accentColor || '#5865F2',
+    avatarUrl: user.avatarUrl || '',
   };
 }
 
+function buildMemberFromUser(user, socketId) {
+  if (!user) {
+    return null;
+  }
+  const author = buildAuthorFromUser(user);
+  return {
+    socketId,
+    userId: author.id,
+    username: author.name,
+    color: author.color,
+    avatarUrl: author.avatarUrl,
+  };
+}
+
+function refreshSocketProfile(socket) {
+  const userId = socket?.data?.user?.id;
+  if (!userId) {
+    return null;
+  }
+  const user = userStore.findById(userId);
+  if (!user) {
+    return null;
+  }
+  const publicUser = userStore.toPublic(user);
+  socket.data.user = publicUser;
+  let socketSet = socketsByUser.get(publicUser.id);
+  if (!socketSet) {
+    socketSet = new Set();
+    socketsByUser.set(publicUser.id, socketSet);
+  }
+  socketSet.add(socket.id);
+  const profile = buildMemberFromUser(publicUser, socket.id);
+  if (profile) {
+    clients.set(socket.id, profile);
+  }
+  return profile;
+}
+
+function getMemberProfile(socketId) {
+  const profile = clients.get(socketId);
+  if (profile) {
+    return profile;
+  }
+  const socket = io.sockets.sockets.get(socketId);
+  if (!socket) {
+    return null;
+  }
+  return refreshSocketProfile(socket);
+}
+
+function getPresenceMembers(room) {
+  const membership = channelMembers.get(room);
+  if (!membership) {
+    return [];
+  }
+  const members = [];
+  for (const [userId, socketIds] of membership.entries()) {
+    let member = null;
+    for (const socketId of socketIds) {
+      member = getMemberProfile(socketId);
+      if (member) {
+        break;
+      }
+    }
+    if (!member) {
+      const user = userStore.findById(userId);
+      if (user) {
+        member = buildMemberFromUser(userStore.toPublic(user), socketIds.values().next().value);
+      }
+    }
+    if (member) {
+      members.push(member);
+    }
+  }
+  return members;
+}
+
 function emitPresence(room) {
-  const members = Array.from(channelMembers.get(room) || []).map(getMemberProfile);
-  io.to(room).emit('presence-update', { room, members });
+  io.to(room).emit('presence-update', { room, members: getPresenceMembers(room) });
 }
 
 function broadcastChannelEvent(room, payload) {
@@ -231,19 +362,29 @@ function leaveRoom(socket, reason = 'left') {
     return;
   }
   socket.leave(currentRoom);
-  const members = channelMembers.get(currentRoom);
-  if (members) {
-    members.delete(socket.id);
-    if (members.size === 0) {
+  const membership = channelMembers.get(currentRoom);
+  let userLeft = false;
+  if (membership && socket.data.user) {
+    const sockets = membership.get(socket.data.user.id);
+    if (sockets) {
+      sockets.delete(socket.id);
+      if (sockets.size === 0) {
+        membership.delete(socket.data.user.id);
+        userLeft = true;
+      }
+    }
+    if (membership.size === 0) {
       channelMembers.delete(currentRoom);
     }
   }
   const profile = getMemberProfile(socket.id);
-  broadcastChannelEvent(currentRoom, {
-    type: 'user-left',
-    user: profile,
-    reason,
-  });
+  if (userLeft && profile) {
+    broadcastChannelEvent(currentRoom, {
+      type: 'user-left',
+      user: profile,
+      reason,
+    });
+  }
   socket.to(currentRoom).emit('p2p-teardown', { peerId: socket.id });
   socket.data.currentRoom = null;
   socket.data.currentChannel = null;
@@ -251,25 +392,27 @@ function leaveRoom(socket, reason = 'left') {
 }
 
 io.on('connection', (socket) => {
-  socket.data = {
-    currentRoom: null,
-    currentChannel: null,
-  };
+  socket.data = socket.data || {};
+  socket.data.currentRoom = null;
+  socket.data.currentChannel = null;
 
-  socket.on('register', (payload = {}, ack) => {
-    const username = typeof payload.username === 'string' ? payload.username.trim() : '';
-    if (!username) {
-      if (ack) ack({ ok: false, error: 'Username is required' });
+  const profile = refreshSocketProfile(socket);
+  if (!profile) {
+    socket.disconnect(true);
+    return;
+  }
+
+  socket.on('register', (_payload = {}, ack) => {
+    const refreshed = refreshSocketProfile(socket);
+    if (!refreshed) {
+      if (ack) ack({ ok: false, error: 'Unable to load profile' });
+      socket.disconnect(true);
       return;
     }
-    const profile = {
-      socketId: socket.id,
-      userId: payload.userId || nanoid(),
-      username,
-      color: payload.color || randomAccent(),
-    };
-    clients.set(socket.id, profile);
-    if (ack) ack({ ok: true, profile });
+    if (ack) ack({ ok: true, profile: refreshed });
+    if (socket.data.currentRoom) {
+      emitPresence(socket.data.currentRoom);
+    }
   });
 
   socket.on('join-channel', (payload = {}, ack) => {
@@ -284,32 +427,45 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (socket.data.currentRoom === roomKey(serverId, channelId)) {
-      if (ack) ack({ ok: true, alreadyJoined: true });
+    const room = roomKey(serverId, channelId);
+    if (socket.data.currentRoom === room) {
+      if (ack) {
+        ack({ ok: true, alreadyJoined: true, members: getPresenceMembers(room) });
+      }
       return;
     }
 
     leaveRoom(socket, 'moved');
 
-    const room = roomKey(serverId, channelId);
     socket.join(room);
-    ensureRoomSet(room).add(socket.id);
+    const membership = ensureRoomMap(room);
+    if (!socket.data.user) {
+      if (ack) ack({ ok: false, error: 'Authentication required' });
+      socket.disconnect(true);
+      return;
+    }
+    let socketSet = membership.get(socket.data.user.id);
+    const firstJoin = !socketSet || socketSet.size === 0;
+    if (!socketSet) {
+      socketSet = new Set();
+      membership.set(socket.data.user.id, socketSet);
+    }
+    socketSet.add(socket.id);
     socket.data.currentRoom = room;
     socket.data.currentChannel = { serverId, channelId };
 
-    const profile = getMemberProfile(socket.id);
-    broadcastChannelEvent(room, {
-      type: 'user-joined',
-      user: profile,
-    });
+    const memberProfile = getMemberProfile(socket.id);
+    if (firstJoin && memberProfile) {
+      broadcastChannelEvent(room, {
+        type: 'user-joined',
+        user: memberProfile,
+      });
+    }
 
     emitPresence(room);
 
     if (ack) {
-      ack({
-        ok: true,
-        members: Array.from(channelMembers.get(room) || []).map(getMemberProfile),
-      });
+      ack({ ok: true, members: getPresenceMembers(room) });
     }
   });
 
@@ -319,7 +475,7 @@ io.on('connection', (socket) => {
 
   socket.on('server-message', (payload = {}, ack) => {
     const { serverId, channelId, content, tempId } = payload;
-    if (!serverId || !channelId || !content || !content.trim()) {
+    if (!serverId || !channelId || typeof content !== 'string' || !content.trim()) {
       if (ack) ack({ ok: false, error: 'Missing message fields' });
       return;
     }
@@ -327,14 +483,14 @@ io.on('connection', (socket) => {
       if (ack) ack({ ok: false, error: 'Join the channel before sending messages' });
       return;
     }
-    const authorProfile = getMemberProfile(socket.id);
+    if (!socket.data.user) {
+      if (ack) ack({ ok: false, error: 'Authentication required' });
+      socket.disconnect(true);
+      return;
+    }
     try {
       const message = store.addMessage(serverId, channelId, {
-        author: {
-          id: authorProfile.userId,
-          name: authorProfile.username,
-          color: authorProfile.color,
-        },
+        author: buildAuthorFromUser(socket.data.user),
         content: content.trim(),
         transport: 'server',
       });
@@ -351,13 +507,24 @@ io.on('connection', (socket) => {
   });
 
   socket.on('store-message', (payload = {}, ack) => {
-    const { serverId, channelId, message } = payload;
-    if (!serverId || !channelId || !message) {
+    const { serverId, channelId, content, id, transport, timestamp } = payload;
+    if (!serverId || !channelId || typeof content !== 'string' || !content.trim()) {
       if (ack) ack({ ok: false, error: 'Invalid payload' });
       return;
     }
+    if (!socket.data.user) {
+      if (ack) ack({ ok: false, error: 'Authentication required' });
+      socket.disconnect(true);
+      return;
+    }
     try {
-      const stored = store.addMessage(serverId, channelId, message);
+      const stored = store.addMessage(serverId, channelId, {
+        id: id || nanoid(),
+        author: buildAuthorFromUser(socket.data.user),
+        content: content.trim(),
+        transport: transport || 'p2p',
+        timestamp,
+      });
       if (ack) ack({ ok: true, message: stored });
     } catch (error) {
       if (ack) ack({ ok: false, error: error.message });
@@ -373,11 +540,17 @@ io.on('connection', (socket) => {
     if (socket.data.currentRoom !== room) {
       return;
     }
-    const peers = Array.from(channelMembers.get(room) || []).filter((id) => id !== socket.id);
+    const peers = listRoomSocketIds(room).filter((id) => id !== socket.id);
     const selfProfile = getMemberProfile(socket.id);
+    if (!selfProfile) {
+      return;
+    }
 
     peers.forEach((peerId) => {
       const peerProfile = getMemberProfile(peerId);
+      if (!peerProfile) {
+        return;
+      }
       io.to(peerId).emit('p2p-init', {
         room,
         peerId: socket.id,
@@ -419,14 +592,17 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     leaveRoom(socket, 'disconnected');
     clients.delete(socket.id);
+    const userId = socket.data?.user?.id;
+    if (userId && socketsByUser.has(userId)) {
+      const socketSet = socketsByUser.get(userId);
+      socketSet.delete(socket.id);
+      if (socketSet.size === 0) {
+        socketsByUser.delete(userId);
+      }
+    }
   });
 });
 
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
-
-function randomAccent() {
-  const palette = ['#F87171', '#FBBF24', '#34D399', '#60A5FA', '#A855F7', '#F472B6'];
-  return palette[Math.floor(Math.random() * palette.length)];
-}

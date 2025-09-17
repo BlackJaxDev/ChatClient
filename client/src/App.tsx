@@ -13,6 +13,8 @@ import { MemberList } from './components/MemberList';
 import { UserProfileModal } from './components/UserProfileModal';
 import { P2PStatus } from './components/P2PStatus';
 import { useP2P } from './hooks/useP2P';
+import { useAuth } from './context/AuthContext';
+import { AuthScreen } from './components/AuthScreen';
 import './styles/App.css';
 
 interface PresencePayload {
@@ -33,13 +35,17 @@ type MessagesAction =
   | { type: 'set-history'; serverId: string; channelId: string; messages: Message[] }
   | { type: 'add'; serverId: string; channelId: string; message: Message }
   | { type: 'replace'; serverId: string; channelId: string; tempId: string; message: Message }
-  | { type: 'error'; serverId: string; channelId: string; id: string; error: string };
+  | { type: 'error'; serverId: string; channelId: string; id: string; error: string }
+  | { type: 'reset' };
 
 function channelKey(serverId: string, channelId: string) {
   return `${serverId}:${channelId}`;
 }
 
 function messagesReducer(state: MessagesState, action: MessagesAction): MessagesState {
+  if (action.type === 'reset') {
+    return {};
+  }
   const key = channelKey(action.serverId, action.channelId);
   const existing = state[key] ?? [];
 
@@ -97,6 +103,7 @@ function dedupeMessages(messages: Message[]) {
 function ChatApp() {
   const socket = useSocket();
   const { theme, toggleTheme, accentColor, setAccentColor } = useTheme();
+  const { user, initializing, pending: authPending, signOut, updateProfile } = useAuth();
   const [servers, setServers] = useState<ServerSummary[]>([]);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
@@ -112,19 +119,9 @@ function ChatApp() {
   const [connectionState, setConnectionState] = useState<'connecting' | 'connected' | 'disconnected'>(
     'disconnected'
   );
-  const [profile, setProfile] = useState<Member>(() => {
-    const storedName = typeof window !== 'undefined' ? window.localStorage.getItem('chatclient.username') || '' : '';
-    const storedColor =
-      typeof window !== 'undefined' ? window.localStorage.getItem('chatclient.color') || '#7c3aed' : '#7c3aed';
-    const storedUserId =
-      typeof window !== 'undefined' ? window.localStorage.getItem('chatclient.userId') || nanoid() : nanoid();
-    return {
-      userId: storedUserId,
-      username: storedName,
-      color: storedColor,
-    };
-  });
-  const [profileModalOpen, setProfileModalOpen] = useState(() => profile.username.trim().length === 0);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [selfMember, setSelfMember] = useState<Member | null>(null);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
 
   const currentServer = useMemo(
@@ -158,13 +155,16 @@ function ChatApp() {
   }, [transportMode]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('chatclient.username', profile.username);
-    window.localStorage.setItem('chatclient.color', profile.color);
-    window.localStorage.setItem('chatclient.userId', profile.userId);
-  }, [profile.username, profile.color, profile.userId]);
-
-  useEffect(() => {
+    if (!user) {
+      setServers([]);
+      setSelectedServerId(null);
+      setSelectedChannelId(null);
+      setMembers([]);
+      setSelfMember(null);
+      setCurrentRoom(null);
+      dispatchMessages({ type: 'reset' });
+      return;
+    }
     fetchServers()
       .then((data) => {
         setServers(data);
@@ -174,38 +174,49 @@ function ChatApp() {
         }
       })
       .catch((error) => console.error('Failed to fetch servers', error));
-  }, []);
+  }, [user]);
 
   useEffect(() => {
-    if (!selectedServerId) return;
+    if (!user || !selectedServerId) return;
     const server = servers.find((item) => item.id === selectedServerId);
     if (!server) return;
     if (!selectedChannelId || !server.channels.some((channel) => channel.id === selectedChannelId)) {
       setSelectedChannelId(server.channels[0]?.id ?? null);
     }
-  }, [servers, selectedServerId, selectedChannelId]);
+  }, [servers, selectedServerId, selectedChannelId, user]);
 
   useEffect(() => {
-    if (!selectedServerId || !selectedChannelId) return;
+    if (!user || !selectedServerId || !selectedChannelId) return;
     fetchMessages(selectedServerId, selectedChannelId)
       .then((items) => {
         dispatchMessages({ type: 'set-history', serverId: selectedServerId, channelId: selectedChannelId, messages: items });
       })
       .catch((error) => console.error('Failed to fetch messages', error));
-  }, [selectedServerId, selectedChannelId]);
+  }, [user, selectedServerId, selectedChannelId]);
+
+  useEffect(() => {
+    if (user?.accentColor) {
+      setAccentColor(user.accentColor);
+    }
+  }, [user?.accentColor, setAccentColor]);
 
   useEffect(() => {
     if (!socket) return;
+    if (!user) {
+      if (socket.connected) {
+        socket.disconnect();
+      }
+      setConnectionState('disconnected');
+      return;
+    }
 
     const handleConnect = () => {
       setConnectionState('connected');
-      if (profile.username.trim()) {
-        socket.emit('register', {
-          username: profile.username,
-          userId: profile.userId,
-          color: profile.color,
-        });
-      }
+      socket.emit('register', {}, (response?: { ok: boolean; profile?: Member }) => {
+        if (response?.ok && response.profile) {
+          setSelfMember(response.profile);
+        }
+      });
       if (selectedServerId && selectedChannelId) {
         socket.emit('join-channel', { serverId: selectedServerId, channelId: selectedChannelId });
       }
@@ -223,9 +234,11 @@ function ChatApp() {
     const handlePresence = (payload: PresencePayload) => {
       if (payload.room !== currentRoom) return;
       setMembers(payload.members);
-      const self = payload.members.find((member) => member.userId === profile.userId);
-      if (self && self.socketId && self.socketId !== profile.socketId) {
-        setProfile((prev) => ({ ...prev, socketId: self.socketId }));
+      if (user) {
+        const self = payload.members.find((member) => member.userId === user.id);
+        if (self) {
+          setSelfMember(self);
+        }
       }
     };
 
@@ -253,11 +266,24 @@ function ChatApp() {
       dispatchMessages({ type: 'add', serverId, channelId, message: eventMessage });
     };
 
+    const handleConnectError = (error: unknown) => {
+      console.error('Socket connection error', error);
+      setConnectionState('disconnected');
+    };
+
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('message', handleMessage);
     socket.on('presence-update', handlePresence);
     socket.on('channel-event', handleChannelEvent);
+    socket.on('connect_error', handleConnectError);
+
+    if (socket.connected) {
+      handleConnect();
+    } else {
+      setConnectionState('connecting');
+      socket.connect();
+    }
 
     return () => {
       socket.off('connect', handleConnect);
@@ -265,35 +291,28 @@ function ChatApp() {
       socket.off('message', handleMessage);
       socket.off('presence-update', handlePresence);
       socket.off('channel-event', handleChannelEvent);
+      socket.off('connect_error', handleConnectError);
     };
-  }, [socket, profile.userId, profile.username, profile.color, profile.socketId, currentRoom, selectedServerId, selectedChannelId]);
+  }, [socket, user, selectedServerId, selectedChannelId, currentRoom]);
 
   useEffect(() => {
-    if (!socket || !profile.username.trim()) return;
-    setConnectionState('connecting');
-    if (!socket.connected) {
-      socket.connect();
-    }
-    socket.emit('register', {
-      username: profile.username,
-      userId: profile.userId,
-      color: profile.color,
-    }, (response?: { ok: boolean; profile?: Member }) => {
+    if (!socket || !socket.connected || !user) return;
+    socket.emit('register', {}, (response?: { ok: boolean; profile?: Member }) => {
       if (response?.ok && response.profile) {
-        setProfile((prev) => ({ ...prev, ...response.profile }));
+        setSelfMember(response.profile);
       }
     });
-  }, [socket, profile.username, profile.userId, profile.color]);
+  }, [socket, user?.displayName, user?.accentColor, user?.avatarUrl]);
 
   useEffect(() => {
-    if (!socket || !socket.connected || !selectedServerId || !selectedChannelId) return;
+    if (!socket || !socket.connected || !user || !selectedServerId || !selectedChannelId) return;
     const room = channelKey(selectedServerId, selectedChannelId);
     socket.emit('join-channel', { serverId: selectedServerId, channelId: selectedChannelId }, (response?: { members?: Member[] }) => {
       if (response?.members) {
         setMembers(response.members);
-        const self = response.members.find((member) => member.userId === profile.userId);
-        if (self && self.socketId) {
-          setProfile((prev) => ({ ...prev, socketId: self.socketId }));
+        const self = response.members.find((member) => member.userId === user.id);
+        if (self) {
+          setSelfMember(self);
         }
       }
     });
@@ -303,7 +322,13 @@ function ChatApp() {
       setMembers([]);
       setCurrentRoom(null);
     };
-  }, [socket, selectedServerId, selectedChannelId, profile.userId]);
+  }, [socket, user, selectedServerId, selectedChannelId]);
+
+  useEffect(() => {
+    if (user && !user.displayName.trim()) {
+      setProfileModalOpen(true);
+    }
+  }, [user]);
 
   const resolvePeerMeta = useCallback(
     (peerId: string) => members.find((member) => member.socketId === peerId),
@@ -324,19 +349,23 @@ function ChatApp() {
     enabled: transportMode === 'p2p',
     serverId: selectedServerId,
     channelId: selectedChannelId,
-    currentUser: profile.username ? profile : null,
+    currentUser: selfMember,
     onMessage: handleIncomingPeerMessage,
     resolvePeerMeta,
   });
 
   const handleSendMessage = useCallback(
     (content: string) => {
-      if (!selectedServerId || !selectedChannelId || !profile.username.trim()) return;
+      if (!selectedServerId || !selectedChannelId || !user) return;
+      const trimmed = content.trim();
+      if (!trimmed) return;
       const timestamp = new Date().toISOString();
       const author: MessageAuthor = {
-        id: profile.userId,
-        name: profile.username,
-        color: profile.color,
+        id: user.id,
+        name: user.displayName,
+        color: selfMember?.color || user.accentColor || '#6366f1',
+        avatarUrl: user.avatarUrl || undefined,
+        socketId: selfMember?.socketId,
       };
 
       const baseMessage: Message = {
@@ -344,7 +373,7 @@ function ChatApp() {
         serverId: selectedServerId,
         channelId: selectedChannelId,
         author,
-        content,
+        content: trimmed,
         timestamp,
         transport: transportMode,
         pending: transportMode === 'server',
@@ -358,7 +387,7 @@ function ChatApp() {
           {
             serverId: selectedServerId,
             channelId: selectedChannelId,
-            content,
+            content: trimmed,
             tempId: baseMessage.id,
           },
           (response?: { ok: boolean; message?: Message; error?: string; tempId?: string }) => {
@@ -383,12 +412,15 @@ function ChatApp() {
         );
       } else {
         sendPeerMessage({ ...baseMessage, pending: false });
-        persistMessage(selectedServerId, selectedChannelId, baseMessage).catch((error) =>
-          console.error('Failed to persist peer message', error)
-        );
+        persistMessage(selectedServerId, selectedChannelId, {
+          id: baseMessage.id,
+          content: trimmed,
+          transport: 'p2p',
+          timestamp,
+        }).catch((error) => console.error('Failed to persist peer message', error));
       }
     },
-    [selectedServerId, selectedChannelId, profile, transportMode, socket, sendPeerMessage]
+    [selectedServerId, selectedChannelId, user, transportMode, socket, sendPeerMessage, selfMember]
   );
 
   const handleCreateServer = async () => {
@@ -418,16 +450,56 @@ function ChatApp() {
     }
   };
 
-  const handleProfileSave = (name: string, color: string) => {
-    setProfile((prev) => ({ ...prev, username: name, color }));
-    setProfileModalOpen(false);
-  };
+  const handleProfileSave = useCallback(
+    async (name: string, color: string) => {
+      setProfileSaving(true);
+      try {
+        const updated = await updateProfile({ displayName: name, accentColor: color });
+        setAccentColor(updated.accentColor);
+        socket?.emit('register', {}, (response?: { ok: boolean; profile?: Member }) => {
+          if (response?.ok && response.profile) {
+            setSelfMember(response.profile);
+          }
+        });
+        setProfileModalOpen(false);
+      } catch (error) {
+        console.error('Failed to update profile', error);
+        throw error instanceof Error ? error : new Error('Failed to update profile');
+      } finally {
+        setProfileSaving(false);
+      }
+    },
+    [updateProfile, setAccentColor, socket]
+  );
+
+  const handleSignOut = useCallback(async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Failed to sign out', error);
+    }
+  }, [signOut]);
 
   const transportLabel = transportMode === 'p2p' ? 'Sending via peer-to-peer WebRTC' : 'Sending via relay server';
-  const composerDisabled = !selectedChannelId || !selectedServerId;
+  const composerDisabled = !selectedChannelId || !selectedServerId || connectionState !== 'connected';
   const composerPlaceholder = currentChannel
     ? `Message #${currentChannel.name}`
     : 'Select a channel to start chatting';
+
+  if (initializing) {
+    return (
+      <div className="auth-screen auth-screen--loading">
+        <div className="auth-card">
+          <h1>ChatClient</h1>
+          <p className="auth-card__subtitle">Loading your workspace…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
 
   return (
     <div className="app-shell">
@@ -475,6 +547,33 @@ function ChatApp() {
                   aria-label="Choose accent color"
                 />
               </label>
+              <div className="server-banner__account">
+                <button
+                  type="button"
+                  className="server-banner__profile"
+                  onClick={() => setProfileModalOpen(true)}
+                >
+                  <span
+                    className="server-banner__avatar"
+                    style={{ backgroundColor: selfMember?.color || user.accentColor || '#6366f1' }}
+                    aria-hidden={true}
+                  >
+                    {initials(user.displayName)}
+                  </span>
+                  <div className="server-banner__profile-meta">
+                    <strong>{user.displayName}</strong>
+                    <span>{user.email}</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  className="server-banner__signout"
+                  onClick={handleSignOut}
+                  disabled={authPending}
+                >
+                  Sign out
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -492,7 +591,7 @@ function ChatApp() {
             </span>
           </div>
         </header>
-        <MessageList messages={currentMessages} currentUserId={profile.userId} />
+        <MessageList messages={currentMessages} currentUserId={user.id} />
         <MessageComposer
           disabled={composerDisabled}
           onSend={handleSendMessage}
@@ -500,12 +599,14 @@ function ChatApp() {
           placeholder={composerPlaceholder}
         />
       </section>
-      <MemberList members={members} currentUserId={profile.userId} />
+      <MemberList members={members} currentUserId={user.id} />
       <UserProfileModal
         open={profileModalOpen}
-        initialName={profile.username}
-        initialColor={profile.color}
+        initialName={user.displayName}
+        initialColor={user.accentColor}
         onSave={handleProfileSave}
+        onClose={() => setProfileModalOpen(false)}
+        saving={profileSaving}
       />
     </div>
   );
@@ -519,6 +620,16 @@ export default function App() {
       </SocketProvider>
     </ThemeProvider>
   );
+}
+
+function initials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+    .padEnd(2, '∙');
 }
 
 function randomAccent() {

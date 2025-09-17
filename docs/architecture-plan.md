@@ -42,8 +42,8 @@ The goal is to evolve the application toward production-ready collaboration feat
   - ~~`POST /api/auth/login`~~
   - ~~`POST /api/auth/logout`~~
   - ~~`GET /api/me` – returns profile + preferences.~~
-- **Socket**: Authenticate connections via token; include `userId` in `register` payloads. Maintain presence keyed by user ID.
-- **Frontend**: Add auth routes (sign-in/up forms), global auth context, secure storage of tokens, profile settings page.
+- ~~**Socket**: Authenticate connections via token; include `userId` in `register` payloads. Maintain presence keyed by user ID.~~
+- ~~**Frontend**: Add auth routes (sign-in/up forms), global auth context, secure storage of tokens, profile settings page.~~
 - **Persistence**: Replace JSON file with relational DB. Provide migration script to import existing demo users (optional).
 - **Security**: Rate-limit auth endpoints, sanitize avatar uploads.
 
