@@ -10,6 +10,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socketRef.current = io('/', {
       autoConnect: false,
       transports: ['websocket'],
+      withCredentials: true,
     });
   }
 
