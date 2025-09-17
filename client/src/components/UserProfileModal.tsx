@@ -4,12 +4,16 @@ interface UserProfileModalProps {
   open: boolean;
   initialName: string;
   initialColor: string;
-  onSave: (name: string, color: string) => void;
+  onSave: (name: string, color: string) => Promise<void> | void;
+  onClose?: () => void;
+  saving?: boolean;
 }
 
-export function UserProfileModal({ open, initialName, initialColor, onSave }: UserProfileModalProps) {
+export function UserProfileModal({ open, initialName, initialColor, onSave, onClose, saving }: UserProfileModalProps) {
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState(initialColor);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setName(initialName);
@@ -21,18 +25,27 @@ export function UserProfileModal({ open, initialName, initialColor, onSave }: Us
 
   if (!open) return null;
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    onSave(trimmed, color);
+    setError(null);
+    try {
+      setSubmitting(true);
+      await onSave(trimmed, color);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update profile';
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="user-profile-modal">
       <form className="user-profile-modal__content" onSubmit={handleSubmit}>
-        <h2>Choose your display name</h2>
-        <p>You can change this later from the settings menu.</p>
+        <h2>Update your profile</h2>
+        <p>Set how others will see you across servers.</p>
         <label>
           Display name
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Ada Lovelace" />
@@ -46,9 +59,15 @@ export function UserProfileModal({ open, initialName, initialColor, onSave }: Us
             </button>
           </div>
         </label>
-        <button type="submit" disabled={!name.trim()}>
-          Join Chat
-        </button>
+        {error && <div className="user-profile-modal__error">{error}</div>}
+        <div className="user-profile-modal__actions">
+          <button type="button" onClick={onClose} disabled={submitting || saving}>
+            Cancel
+          </button>
+          <button type="submit" disabled={!name.trim() || submitting || saving}>
+            {submitting || saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
       </form>
     </div>
   );

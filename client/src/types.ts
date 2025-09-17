@@ -5,6 +5,7 @@ export interface Member {
   userId: string;
   username: string;
   color: string;
+  avatarUrl?: string;
 }
 
 export interface MessageAuthor {
@@ -12,6 +13,7 @@ export interface MessageAuthor {
   name: string;
   color: string;
   socketId?: string;
+  avatarUrl?: string;
 }
 
 export interface ChannelSummary {
@@ -49,4 +51,15 @@ export interface ChannelEvent {
   type: 'user-joined' | 'user-left';
   user: Member;
   reason?: string;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string;
+  accentColor: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
 }
