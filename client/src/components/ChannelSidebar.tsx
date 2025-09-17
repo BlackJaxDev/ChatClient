@@ -25,11 +25,12 @@ export function ChannelSidebar({ server, selectedChannelId, onSelectChannel, onC
               key={channel.id}
               className={`channel-sidebar__item${isActive ? ' channel-sidebar__item--active' : ''}`}
               onClick={() => onSelectChannel(channel.id)}
+              aria-current={isActive ? 'page' : undefined}
             >
               <span>#</span>
               <div className="channel-sidebar__item-text">
                 <strong>{channel.name}</strong>
-                {channel.topic && <small>{channel.topic}</small>}
+                <small>{channel.topic?.trim() || `${channel.messageCount} messages`}</small>
               </div>
             </button>
           );

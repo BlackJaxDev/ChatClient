@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+import { CSSProperties, useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { SocketProvider, useSocket } from './context/SocketContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { fetchServers, fetchMessages, createServer, createChannel, persistMessage } from './api';
 import { Member, Message, MessageAuthor, ServerSummary, TransportMode } from './types';
 import { ServerSidebar } from './components/ServerSidebar';
@@ -95,6 +96,7 @@ function dedupeMessages(messages: Message[]) {
 
 function ChatApp() {
   const socket = useSocket();
+  const { theme, toggleTheme, accentColor, setAccentColor } = useTheme();
   const [servers, setServers] = useState<ServerSummary[]>([]);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
@@ -130,10 +132,25 @@ function ChatApp() {
     [servers, selectedServerId]
   );
 
+  const currentChannel = useMemo(() => {
+    if (!currentServer || !selectedChannelId) return null;
+    return currentServer.channels.find((channel) => channel.id === selectedChannelId) ?? null;
+  }, [currentServer, selectedChannelId]);
+
   const currentMessages = useMemo(() => {
     if (!selectedServerId || !selectedChannelId) return [] as Message[];
     return messages[channelKey(selectedServerId, selectedChannelId)] ?? [];
   }, [messages, selectedServerId, selectedChannelId]);
+
+  const serverAccent = currentServer?.accentColor || accentColor;
+
+  const serverBannerStyle = useMemo(() => {
+    const style: BannerStyle = {
+      '--server-banner-color': serverAccent,
+      '--server-banner-shade': darkenColor(serverAccent, 0.35),
+    };
+    return style;
+  }, [serverAccent]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -407,6 +424,10 @@ function ChatApp() {
   };
 
   const transportLabel = transportMode === 'p2p' ? 'Sending via peer-to-peer WebRTC' : 'Sending via relay server';
+  const composerDisabled = !selectedChannelId || !selectedServerId;
+  const composerPlaceholder = currentChannel
+    ? `Message #${currentChannel.name}`
+    : 'Select a channel to start chatting';
 
   return (
     <div className="app-shell">
@@ -423,18 +444,46 @@ function ChatApp() {
         onCreateChannel={handleCreateChannel}
       />
       <section className="chat-area">
+        <div className="server-banner" style={serverBannerStyle}>
+          <div className="server-banner__content">
+            <div className="server-banner__primary">
+              <span className="server-banner__label">Server</span>
+              <h1>{currentServer?.name ?? 'Welcome to ChatClient'}</h1>
+              <p>{currentServer?.description?.trim() || 'Create or join a server to start chatting in real time.'}</p>
+            </div>
+            <div className="server-banner__channel">
+              <span className="server-banner__label">Current channel</span>
+              <h2>{currentChannel ? `#${currentChannel.name}` : 'No channel selected'}</h2>
+              <p>{currentChannel?.topic?.trim() || 'Select a channel to view its conversation.'}</p>
+            </div>
+            <div className="server-banner__actions">
+              <button
+                type="button"
+                className="server-banner__theme-toggle"
+                onClick={toggleTheme}
+                title={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+                aria-label="Toggle theme"
+              >
+                {theme === 'light' ? '🌞' : '🌙'}
+              </button>
+              <label className="server-banner__accent-picker">
+                <span>Accent</span>
+                <input
+                  type="color"
+                  value={accentColor}
+                  onChange={(event) => setAccentColor(event.target.value)}
+                  aria-label="Choose accent color"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
         <header className="chat-header">
           <div className="chat-header__title">
             <span>#</span>
-            <strong>
-              {currentServer?.channels.find((channel) => channel.id === selectedChannelId)?.name || 'Select a channel'}
-            </strong>
+            <strong>{currentChannel?.name || 'Select a channel'}</strong>
           </div>
-          {currentServer?.channels && selectedChannelId && (
-            <p className="chat-header__topic">
-              {currentServer.channels.find((channel) => channel.id === selectedChannelId)?.topic || 'No topic set'}
-            </p>
-          )}
+          <p className="chat-header__topic">{currentChannel?.topic?.trim() || 'No topic set'}</p>
           <div className="chat-header__meta">
             <TransportToggle mode={transportMode} onChange={setTransportMode} />
             <P2PStatus peers={p2pPeers} active={transportMode === 'p2p'} />
@@ -445,9 +494,10 @@ function ChatApp() {
         </header>
         <MessageList messages={currentMessages} currentUserId={profile.userId} />
         <MessageComposer
-          disabled={!selectedChannelId || !selectedServerId}
+          disabled={composerDisabled}
           onSend={handleSendMessage}
           transportLabel={transportLabel}
+          placeholder={composerPlaceholder}
         />
       </section>
       <MemberList members={members} currentUserId={profile.userId} />
@@ -463,13 +513,57 @@ function ChatApp() {
 
 export default function App() {
   return (
-    <SocketProvider>
-      <ChatApp />
-    </SocketProvider>
+    <ThemeProvider>
+      <SocketProvider>
+        <ChatApp />
+      </SocketProvider>
+    </ThemeProvider>
   );
 }
 
 function randomAccent() {
   const palette = ['#ef4444', '#f97316', '#facc15', '#34d399', '#60a5fa', '#a855f7'];
   return palette[Math.floor(Math.random() * palette.length)];
+}
+
+type BannerStyle = CSSProperties & {
+  '--server-banner-color'?: string;
+  '--server-banner-shade'?: string;
+};
+
+function darkenColor(color: string, amount: number) {
+  return mixColor(color, '#000000', amount);
+}
+
+function mixColor(color: string, target: string, amount: number) {
+  const source = hexToRgbSafe(color);
+  const dest = hexToRgbSafe(target);
+  const mix = {
+    r: source.r + (dest.r - source.r) * amount,
+    g: source.g + (dest.g - source.g) * amount,
+    b: source.b + (dest.b - source.b) * amount,
+  };
+  return rgbToHex(mix);
+}
+
+function hexToRgbSafe(color: string) {
+  const normalized = color?.replace('#', '') ?? '000000';
+  const padded = normalized.length === 3
+    ? normalized
+        .split('')
+        .map((char) => char + char)
+        .join('')
+    : normalized.padEnd(6, '0');
+  const int = Number.parseInt(padded.slice(0, 6), 16) || 0;
+  return {
+    r: (int >> 16) & 255,
+    g: (int >> 8) & 255,
+    b: int & 255,
+  };
+}
+
+function rgbToHex({ r, g, b }: { r: number; g: number; b: number }) {
+  const clamp = (value: number) => Math.min(255, Math.max(0, Math.round(value)));
+  const toHex = (value: number) => clamp(value).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
