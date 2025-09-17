@@ -2,26 +2,33 @@ const path = require('path');
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const { Server } = require('socket.io');
 const { nanoid } = require('nanoid');
 const { Store } = require('./store');
-const { UserStore } = require('./userStore');
+const { UserStore, sanitizeAvatarUrl } = require('./userStore');
 const { SessionStore } = require('./sessionStore');
 const { AUTH_COOKIE_NAME, createAuthHandlers, parseCookies } = require('./auth');
 
 const PORT = process.env.PORT || 3001;
-const DATA_FILE = path.join(__dirname, '..', 'data', 'servers.json');
-const USERS_FILE = path.join(__dirname, '..', 'data', 'users.json');
+const DB_FILE = path.join(__dirname, '..', 'data', 'chatclient.sqlite');
 const SESSIONS_FILE = path.join(__dirname, '..', 'data', 'sessions.json');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
-const store = new Store(DATA_FILE);
-const userStore = new UserStore(USERS_FILE);
+const store = new Store(DB_FILE);
+const userStore = new UserStore(DB_FILE);
 const sessionStore = new SessionStore(SESSIONS_FILE);
 const auth = createAuthHandlers({ userStore, sessionStore });
+
+const authLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 app.use(auth.attachUser);
 
@@ -46,7 +53,7 @@ function normalizeAccent(color) {
   return trimmed;
 }
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', authLimiter, (req, res) => {
   const { email, password, displayName, avatarUrl, accentColor } = req.body || {};
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'A valid email is required' });
@@ -55,13 +62,13 @@ app.post('/api/auth/register', (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters long' });
   }
   const normalizedDisplayName = normalizeString(displayName);
-  const normalizedAvatar = normalizeString(avatarUrl);
+  const sanitizedAvatar = sanitizeAvatarUrl(typeof avatarUrl === 'string' ? avatarUrl : '');
   try {
     const created = userStore.createUser({
       email,
       password,
       displayName: normalizedDisplayName,
-      avatarUrl: normalizedAvatar,
+      avatarUrl: sanitizedAvatar,
       accentColor: normalizeAccent(accentColor),
     });
     auth.issueSession(res, created.id);
@@ -74,7 +81,7 @@ app.post('/api/auth/register', (req, res) => {
   }
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authLimiter, (req, res) => {
   const { email, password } = req.body || {};
   if (!isValidEmail(email) || typeof password !== 'string') {
     return res.status(400).json({ error: 'Email and password are required' });
@@ -107,7 +114,7 @@ app.patch('/api/me', auth.requireAuth, (req, res) => {
       updates.displayName = normalizeString(displayName);
     }
     if (typeof avatarUrl === 'string') {
-      updates.avatarUrl = normalizeString(avatarUrl);
+      updates.avatarUrl = sanitizeAvatarUrl(avatarUrl);
     }
     const normalizedAccent = normalizeAccent(accentColor);
     if (normalizedAccent) {
@@ -606,3 +613,10 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
+const authLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+

@@ -1,36 +1,8 @@
-const fs = require('fs');
-const path = require('path');
 const { nanoid } = require('nanoid');
 const crypto = require('crypto');
+const { getDb } = require('./db');
 
 const ACCENT_COLORS = ['#F87171', '#FBBF24', '#34D399', '#60A5FA', '#A855F7', '#F472B6', '#6366F1'];
-
-function ensureDirectory(filePath) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-}
-
-function loadUsers(filePath) {
-  try {
-    if (!fs.existsSync(filePath)) {
-      ensureDirectory(filePath);
-      const defaults = { users: [] };
-      fs.writeFileSync(filePath, JSON.stringify(defaults, null, 2));
-      return defaults.users;
-    }
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const parsed = JSON.parse(content);
-    if (!parsed.users || !Array.isArray(parsed.users)) {
-      throw new Error('Malformed user store');
-    }
-    return parsed.users;
-  } catch (error) {
-    console.error('Failed to load users store. Resetting to empty list.', error);
-    ensureDirectory(filePath);
-    const fallback = { users: [] };
-    fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2));
-    return fallback.users;
-  }
-}
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16);
@@ -65,31 +37,63 @@ function randomAccent() {
   return ACCENT_COLORS[Math.floor(Math.random() * ACCENT_COLORS.length)];
 }
 
-class UserStore {
-  constructor(filePath) {
-    this.filePath = filePath;
-    this.users = loadUsers(filePath);
+function sanitizeAvatarUrl(value) {
+  if (typeof value !== 'string') {
+    return '';
   }
-
-  persist() {
-    try {
-      ensureDirectory(this.filePath);
-      fs.writeFileSync(
-        this.filePath,
-        JSON.stringify({ users: this.users }, null, 2)
-      );
-    } catch (error) {
-      console.error('Failed to persist user store', error);
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return '';
     }
+    return url.toString();
+  } catch (error) {
+    return '';
+  }
+}
+
+function mapUserRow(row) {
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    email: row.email,
+    passwordHash: row.password_hash,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url || '',
+    accentColor: row.accent_color || '',
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+class UserStore {
+  constructor(databaseFile) {
+    this.db = getDb(databaseFile);
+    this.findByEmailStmt = this.db.prepare('SELECT * FROM users WHERE email = ?');
+    this.findByIdStmt = this.db.prepare('SELECT * FROM users WHERE id = ?');
+    this.insertUserStmt = this.db.prepare(
+      `INSERT INTO users (
+        id, email, password_hash, display_name, avatar_url, accent_color, status, created_at, updated_at
+      ) VALUES (
+        @id, @email, @passwordHash, @displayName, @avatarUrl, @accentColor, @status, @createdAt, @updatedAt
+      )`
+    );
   }
 
   findByEmail(email) {
     const normalized = normalizeEmail(email);
-    return this.users.find((user) => user.email === normalized) || null;
+    return mapUserRow(this.findByEmailStmt.get(normalized));
   }
 
   findById(id) {
-    return this.users.find((user) => user.id === id) || null;
+    return mapUserRow(this.findByIdStmt.get(id));
   }
 
   createUser({ email, password, displayName, avatarUrl, accentColor }) {
@@ -103,14 +107,23 @@ class UserStore {
       email: normalizedEmail,
       passwordHash: hashPassword(password),
       displayName: displayName ? displayName.trim() : deriveDisplayName(normalizedEmail),
-      avatarUrl: avatarUrl ? avatarUrl.trim() : '',
+      avatarUrl: sanitizeAvatarUrl(avatarUrl),
       accentColor: accentColor || randomAccent(),
       status: 'active',
       createdAt: now,
       updatedAt: now,
     };
-    this.users.push(user);
-    this.persist();
+    this.insertUserStmt.run({
+      id: user.id,
+      email: user.email,
+      passwordHash: user.passwordHash,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      accentColor: user.accentColor,
+      status: user.status,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    });
     return this.toPublic(user);
   }
 
@@ -119,22 +132,32 @@ class UserStore {
     if (!user) {
       throw new Error('User not found');
     }
-    const { displayName, avatarUrl, accentColor, status } = updates;
-    if (typeof displayName === 'string') {
-      user.displayName = displayName.trim();
+    const fields = [];
+    const params = { id: userId };
+    if (typeof updates.displayName === 'string') {
+      params.displayName = updates.displayName.trim();
+      fields.push('display_name = @displayName');
     }
-    if (typeof avatarUrl === 'string') {
-      user.avatarUrl = avatarUrl.trim();
+    if (typeof updates.avatarUrl === 'string') {
+      params.avatarUrl = sanitizeAvatarUrl(updates.avatarUrl);
+      fields.push('avatar_url = @avatarUrl');
     }
-    if (typeof accentColor === 'string') {
-      user.accentColor = accentColor.trim();
+    if (typeof updates.accentColor === 'string') {
+      params.accentColor = updates.accentColor.trim();
+      fields.push('accent_color = @accentColor');
     }
-    if (typeof status === 'string') {
-      user.status = status;
+    if (typeof updates.status === 'string') {
+      params.status = updates.status;
+      fields.push('status = @status');
     }
-    user.updatedAt = new Date().toISOString();
-    this.persist();
-    return this.toPublic(user);
+    if (fields.length === 0) {
+      return this.toPublic(user);
+    }
+    params.updatedAt = new Date().toISOString();
+    fields.push('updated_at = @updatedAt');
+    const statement = `UPDATE users SET ${fields.join(', ')} WHERE id = @id`;
+    this.db.prepare(statement).run(params);
+    return this.toPublic(this.findById(userId));
   }
 
   verifyCredentials(email, password) {
@@ -147,10 +170,11 @@ class UserStore {
 
   touch(userId) {
     const user = this.findById(userId);
-    if (user) {
-      user.updatedAt = new Date().toISOString();
-      this.persist();
+    if (!user) {
+      return;
     }
+    const updatedAt = new Date().toISOString();
+    this.db.prepare('UPDATE users SET updated_at = ? WHERE id = ?').run(updatedAt, userId);
   }
 
   toPublic(user) {
@@ -162,4 +186,5 @@ class UserStore {
 
 module.exports = {
   UserStore,
+  sanitizeAvatarUrl,
 };
