@@ -50,16 +50,47 @@ function runMigrations(db) {
       author_color TEXT,
       author_avatar_url TEXT,
       content TEXT NOT NULL,
+      content_blocks TEXT NOT NULL DEFAULT '[]',
+      mentions TEXT NOT NULL DEFAULT '[]',
       timestamp TEXT NOT NULL,
       transport TEXT NOT NULL,
       system INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS attachments (
+      id TEXT PRIMARY KEY,
+      message_id TEXT REFERENCES messages(id) ON DELETE CASCADE,
+      uploader_id TEXT NOT NULL,
+      server_id TEXT,
+      channel_id TEXT,
+      type TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      storage_key TEXT NOT NULL,
+      url TEXT NOT NULL,
+      thumbnail_url TEXT DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_channels_server ON channels(server_id);
     CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id, timestamp);
     CREATE INDEX IF NOT EXISTS idx_messages_server ON messages(server_id);
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id);
+    CREATE INDEX IF NOT EXISTS idx_attachments_uploader ON attachments(uploader_id);
   `);
+
+  const messageColumns = db.prepare('PRAGMA table_info(messages)').all();
+  const hasBlocks = messageColumns.some((column) => column.name === 'content_blocks');
+  if (!hasBlocks) {
+    db.exec("ALTER TABLE messages ADD COLUMN content_blocks TEXT NOT NULL DEFAULT '[]'");
+  }
+  const hasMentions = messageColumns.some((column) => column.name === 'mentions');
+  if (!hasMentions) {
+    db.exec("ALTER TABLE messages ADD COLUMN mentions TEXT NOT NULL DEFAULT '[]'");
+  }
 }
 
 function seedInitialData(db) {
@@ -78,10 +109,10 @@ function seedInitialData(db) {
   const insertMessage = db.prepare(
     `INSERT INTO messages (
       id, server_id, channel_id, author_id, author_name, author_color, author_avatar_url,
-      content, timestamp, transport, system
+      content, content_blocks, mentions, timestamp, transport, system
     ) VALUES (
       @id, @serverId, @channelId, @authorId, @authorName, @authorColor, @authorAvatarUrl,
-      @content, @timestamp, @transport, @system
+      @content, @contentBlocks, @mentions, @timestamp, @transport, @system
     )`
   );
 
@@ -102,6 +133,14 @@ function seedInitialData(db) {
           topic: channel.topic || '',
         });
         for (const message of channel.messages) {
+          const blocks = Array.isArray(message.blocks)
+            ? message.blocks
+            : [
+                {
+                  type: 'paragraph',
+                  text: message.content,
+                },
+              ];
           insertMessage.run({
             id: message.id,
             serverId: server.id,
@@ -111,6 +150,8 @@ function seedInitialData(db) {
             authorColor: message.author?.color || '#94a3b8',
             authorAvatarUrl: message.author?.avatarUrl || '',
             content: message.content,
+            contentBlocks: JSON.stringify(blocks),
+            mentions: JSON.stringify(message.mentions || []),
             timestamp: message.timestamp,
             transport: message.transport,
             system: mapBoolean(message.system),
