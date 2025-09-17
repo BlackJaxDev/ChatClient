@@ -16,6 +16,23 @@ export interface MessageAuthor {
   avatarUrl?: string;
 }
 
+export type MessageBlock =
+  | { type: 'paragraph'; text: string }
+  | { type: 'heading'; level: number; text: string }
+  | { type: 'code'; text: string; language?: string }
+  | { type: 'quote'; text: string }
+  | { type: 'list'; style: 'bullet' | 'number'; items: string[] };
+
+export interface MessageAttachment {
+  id: string;
+  type: 'image' | 'file';
+  mimeType: string;
+  name: string;
+  size: number;
+  url: string;
+  thumbnailUrl?: string;
+}
+
 export interface ChannelSummary {
   id: string;
   name: string;
@@ -39,6 +56,9 @@ export interface Message {
   channelId: string;
   author: MessageAuthor;
   content: string;
+  blocks: MessageBlock[];
+  attachments: MessageAttachment[];
+  mentions: string[];
   timestamp: string;
   transport: TransportMode;
   system?: boolean;

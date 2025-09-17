@@ -3,12 +3,14 @@ const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const { buffer: consumeBuffer } = require('node:stream/consumers');
 const { Server } = require('socket.io');
 const { nanoid } = require('nanoid');
 const { Store } = require('./store');
 const { UserStore, sanitizeAvatarUrl } = require('./userStore');
 const { SessionStore } = require('./sessionStore');
 const { AUTH_COOKIE_NAME, createAuthHandlers, parseCookies } = require('./auth');
+const { ensureUploadDir, saveBuffer, openReadStream, fileStat } = require('./storage');
 
 const PORT = process.env.PORT || 3001;
 const DB_FILE = path.join(__dirname, '..', 'data', 'chatclient.sqlite');
@@ -18,10 +20,89 @@ const app = express();
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
+const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 10 * 1024 * 1024);
+
 const store = new Store(DB_FILE);
 const userStore = new UserStore(DB_FILE);
 const sessionStore = new SessionStore(SESSIONS_FILE);
 const auth = createAuthHandlers({ userStore, sessionStore });
+ensureUploadDir();
+
+function parseContentDisposition(value = '') {
+  return value
+    .split(';')
+    .map((part) => part.trim())
+    .reduce(
+      (acc, part) => {
+        const [key, raw] = part.split('=');
+        if (!raw) {
+          return acc;
+        }
+        const normalizedKey = key.toLowerCase();
+        const trimmed = raw.trim().replace(/^"|"$/g, '');
+        acc[normalizedKey] = trimmed;
+        return acc;
+      },
+      { name: '', filename: '' }
+    );
+}
+
+async function extractMultipartFile(req) {
+  const contentType = req.headers['content-type'] || '';
+  const boundaryMatch = contentType.match(/boundary=(?:(?:"([^"\\]+)")|([^;]+))/i);
+  if (!boundaryMatch) {
+    throw new Error('Missing multipart boundary');
+  }
+  const boundary = boundaryMatch[1] || boundaryMatch[2];
+  const rawBody = await consumeBuffer(req);
+  if (rawBody.length > MAX_UPLOAD_BYTES) {
+    const error = new Error('File too large');
+    error.statusCode = 413;
+    throw error;
+  }
+  const marker = `--${boundary}`;
+  const text = rawBody.toString('latin1');
+  const segments = text.split(marker);
+  for (const segment of segments) {
+    if (!segment || segment === '--' || segment === '--\r\n') {
+      continue;
+    }
+    const cleaned = segment.replace(/^\r\n/, '').replace(/\r\n$/, '');
+    if (cleaned === '--') {
+      continue;
+    }
+    const headerEnd = cleaned.indexOf('\r\n\r\n');
+    if (headerEnd === -1) {
+      continue;
+    }
+    const headerSection = cleaned.slice(0, headerEnd);
+    let bodySection = cleaned.slice(headerEnd + 4);
+    if (bodySection.endsWith('\r\n')) {
+      bodySection = bodySection.slice(0, -2);
+    }
+    const headers = headerSection.split('\r\n').reduce((acc, line) => {
+      const [key, ...rest] = line.split(':');
+      if (!key || rest.length === 0) {
+        return acc;
+      }
+      acc[key.trim().toLowerCase()] = rest.join(':').trim();
+      return acc;
+    }, {});
+    const disposition = parseContentDisposition(headers['content-disposition'] || '');
+    if (!disposition || !disposition.name || !disposition.filename) {
+      continue;
+    }
+    const contentTypeHeader = headers['content-type'] || 'application/octet-stream';
+    const buffer = Buffer.from(bodySection, 'latin1');
+    return {
+      fieldName: disposition.name,
+      filename: disposition.filename,
+      contentType: contentTypeHeader,
+      buffer,
+    };
+  }
+  throw new Error('No file field found');
+}
 
 const authLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
@@ -182,16 +263,21 @@ app.get('/api/servers/:serverId/channels/:channelId/messages', (req, res) => {
 
 app.post('/api/servers/:serverId/channels/:channelId/messages', auth.requireAuth, (req, res) => {
   const { serverId, channelId } = req.params;
-  const { content, transport, timestamp, id } = req.body || {};
+  const { content, transport, timestamp, id, blocks, attachments, mentions } = req.body || {};
   const normalizedContent = typeof content === 'string' ? content.trim() : '';
-  if (!normalizedContent) {
-    return res.status(400).json({ error: 'Message content is required' });
+  const attachmentList = Array.isArray(attachments) ? attachments : [];
+  const hasAttachments = attachmentList.length > 0;
+  if (!normalizedContent && !hasAttachments) {
+    return res.status(400).json({ error: 'Message content or attachment is required' });
   }
   try {
     const message = store.addMessage(serverId, channelId, {
       id: id || nanoid(),
       author: buildAuthorFromUser(req.user),
       content: normalizedContent,
+      blocks,
+      attachments: attachmentList,
+      mentions,
       transport: transport || 'server',
       timestamp,
     });
@@ -199,6 +285,65 @@ app.post('/api/servers/:serverId/channels/:channelId/messages', auth.requireAuth
   } catch (error) {
     res.status(404).json({ error: error.message });
   }
+});
+
+app.post('/api/uploads', auth.requireAuth, async (req, res) => {
+  try {
+    const file = await extractMultipartFile(req);
+    if (!file || file.fieldName !== 'file') {
+      return res.status(400).json({ error: 'File is required' });
+    }
+    const originalName = path.basename(file.filename || 'upload');
+    const type = file.contentType && file.contentType.startsWith('image/') ? 'image' : 'file';
+    const { key } = saveBuffer(file.buffer, {
+      originalName,
+      mimeType: file.contentType,
+    });
+    const attachmentId = nanoid();
+    const row = store.createUpload({
+      id: attachmentId,
+      uploaderId: req.user.id,
+      type,
+      mimeType: file.contentType || 'application/octet-stream',
+      name: originalName || `${attachmentId}.${type === 'image' ? 'png' : 'bin'}`,
+      size: file.buffer.length,
+      storageKey: key,
+      url: `/api/attachments/${attachmentId}`,
+      thumbnailUrl: '',
+    });
+    return res.status(201).json({ attachment: store.mapAttachment(row) });
+  } catch (error) {
+    if (error.statusCode === 413) {
+      return res.status(413).json({ error: 'File too large' });
+    }
+    console.error('Failed to store upload', error);
+    return res.status(400).json({ error: error.message || 'Failed to store upload' });
+  }
+});
+
+app.get('/api/attachments/:id', auth.requireAuth, (req, res) => {
+  const { id } = req.params;
+  const row = store.getAttachmentById(id);
+  if (!row) {
+    return res.status(404).json({ error: 'Attachment not found' });
+  }
+  if (!row.message_id && row.uploader_id !== req.user.id) {
+    return res.status(403).json({ error: 'Attachment not available' });
+  }
+  const stats = fileStat(row.storage_key);
+  if (!stats) {
+    return res.status(404).json({ error: 'Attachment file missing' });
+  }
+  res.setHeader('Content-Type', row.mime_type || 'application/octet-stream');
+  res.setHeader('Content-Length', stats.size);
+  res.setHeader('Cache-Control', 'private, max-age=0, must-revalidate');
+  const dispositionName = row.name || 'attachment';
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(dispositionName)}"`);
+  const stream = openReadStream(row.storage_key);
+  stream.on('error', () => {
+    res.destroy();
+  });
+  stream.pipe(res);
 });
 
 const server = http.createServer(app);
@@ -481,8 +626,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('server-message', (payload = {}, ack) => {
-    const { serverId, channelId, content, tempId } = payload;
-    if (!serverId || !channelId || typeof content !== 'string' || !content.trim()) {
+    const { serverId, channelId, content, tempId, attachments, blocks, mentions } = payload;
+    const normalizedContent = typeof content === 'string' ? content.trim() : '';
+    const attachmentList = Array.isArray(attachments) ? attachments : [];
+    const hasAttachments = attachmentList.length > 0;
+    if (!serverId || !channelId || (!normalizedContent && !hasAttachments)) {
       if (ack) ack({ ok: false, error: 'Missing message fields' });
       return;
     }
@@ -498,7 +646,10 @@ io.on('connection', (socket) => {
     try {
       const message = store.addMessage(serverId, channelId, {
         author: buildAuthorFromUser(socket.data.user),
-        content: content.trim(),
+        content: normalizedContent,
+        blocks,
+        attachments: attachmentList,
+        mentions,
         transport: 'server',
       });
       io.to(roomKey(serverId, channelId)).emit('message', {
@@ -514,8 +665,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('store-message', (payload = {}, ack) => {
-    const { serverId, channelId, content, id, transport, timestamp } = payload;
-    if (!serverId || !channelId || typeof content !== 'string' || !content.trim()) {
+    const { serverId, channelId, content, id, transport, timestamp, attachments, blocks, mentions } = payload;
+    const normalizedContent = typeof content === 'string' ? content.trim() : '';
+    const attachmentList = Array.isArray(attachments) ? attachments : [];
+    const hasAttachments = attachmentList.length > 0;
+    if (!serverId || !channelId || (!normalizedContent && !hasAttachments)) {
       if (ack) ack({ ok: false, error: 'Invalid payload' });
       return;
     }
@@ -528,7 +682,10 @@ io.on('connection', (socket) => {
       const stored = store.addMessage(serverId, channelId, {
         id: id || nanoid(),
         author: buildAuthorFromUser(socket.data.user),
-        content: content.trim(),
+        content: normalizedContent,
+        blocks,
+        attachments: attachmentList,
+        mentions,
         transport: transport || 'p2p',
         timestamp,
       });
@@ -613,10 +770,3 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
-const authLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-

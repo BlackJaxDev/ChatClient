@@ -16,6 +16,12 @@ function createDefaultState() {
     channelId,
     author: systemAuthor,
     content,
+    blocks: [
+      {
+        type: 'paragraph',
+        text: content,
+      },
+    ],
     timestamp: now,
     transport: 'server',
     system: true,
