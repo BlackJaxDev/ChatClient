@@ -1,27 +1,28 @@
 {
   "name": "chatclient",
   "version": "1.0.0",
-  "description": "",
+  "private": true,
+  "description": "Full-stack peer-to-peer aware Discord-like chat client",
   "scripts": {
-    "web": "concurrently \"npm run server\" \"cd client && npm run serve-web\" ",
-    "desktop": "concurrently \"npm run server\" \"cd client && npm run serve-electron\" ",
-    "android": "concurrently \"npm run server\" \"cd client && npm run serve-android\" ",
-    "ios": "concurrently \"npm run server\" \"cd client && npm run serve-ios\" ",
-    "server": "cd server && npm run start",
-    "start": "npm run web",
-    "install-all": "concurrently \"npm install\" \"cd client && npm install\" \"cd server && npm install\""
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "start": "npm run dev",
+    "build": "npm run build:client",
+    "build:client": "cd client && npm run build",
+    "install-all": "npm install && cd client && npm install && cd ../server && npm install"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/BlackJax96/ChatClientAWS.git"
   },
-  "author": "David Eddy",
-  "license": "ISC",
+  "author": "ChatClient Contributors",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/BlackJax96/ChatClientAWS/issues"
   },
   "homepage": "https://github.com/BlackJax96/ChatClientAWS#readme",
   "devDependencies": {
-    "concurrently": "^4.1.0"
+    "concurrently": "^8.2.2"
   }
 }
