@@ -5,15 +5,99 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 const { nanoid } = require('nanoid');
 const { Store } = require('./store');
+const { UserStore } = require('./userStore');
+const { SessionStore } = require('./sessionStore');
+const { createAuthHandlers } = require('./auth');
 
 const PORT = process.env.PORT || 3001;
 const DATA_FILE = path.join(__dirname, '..', 'data', 'servers.json');
+const USERS_FILE = path.join(__dirname, '..', 'data', 'users.json');
+const SESSIONS_FILE = path.join(__dirname, '..', 'data', 'sessions.json');
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 const store = new Store(DATA_FILE);
+const userStore = new UserStore(USERS_FILE);
+const sessionStore = new SessionStore(SESSIONS_FILE);
+const auth = createAuthHandlers({ userStore, sessionStore });
+
+app.use(auth.attachUser);
+
+function isValidEmail(email) {
+  if (typeof email !== 'string') return false;
+  const trimmed = email.trim();
+  if (!trimmed) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
+function normalizeString(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeAccent(color) {
+  if (typeof color !== 'string') return undefined;
+  const trimmed = color.trim();
+  if (!trimmed) return undefined;
+  if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+app.post('/api/auth/register', (req, res) => {
+  const { email, password, displayName, avatarUrl, accentColor } = req.body || {};
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'A valid email is required' });
+  }
+  if (typeof password !== 'string' || password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+  }
+  const normalizedDisplayName = normalizeString(displayName);
+  const normalizedAvatar = normalizeString(avatarUrl);
+  try {
+    const created = userStore.createUser({
+      email,
+      password,
+      displayName: normalizedDisplayName,
+      avatarUrl: normalizedAvatar,
+      accentColor: normalizeAccent(accentColor),
+    });
+    auth.issueSession(res, created.id);
+    return res.status(201).json({ user: created });
+  } catch (error) {
+    if (error.message === 'Email already registered') {
+      return res.status(409).json({ error: error.message });
+    }
+    return res.status(400).json({ error: error.message || 'Failed to create user' });
+  }
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (!isValidEmail(email) || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+  const user = userStore.verifyCredentials(email, password);
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid email or password' });
+  }
+  auth.issueSession(res, user.id);
+  return res.json({ user: userStore.toPublic(user) });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  if (req.authToken) {
+    sessionStore.deleteSession(req.authToken);
+  }
+  auth.clearSession(res);
+  return res.json({ ok: true });
+});
+
+app.get('/api/me', auth.requireAuth, (req, res) => {
+  return res.json({ user: req.user });
+});
 
 app.get('/api/servers', (req, res) => {
   res.json({ servers: store.getServersOverview() });
