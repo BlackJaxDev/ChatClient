@@ -3,11 +3,11 @@ import { nanoid } from 'nanoid';
 import { SocketProvider, useSocket } from './context/SocketContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { fetchServers, fetchMessages, createServer, createChannel, persistMessage } from './api';
-import { Member, Message, MessageAuthor, ServerSummary, TransportMode } from './types';
+import { Member, Message, MessageAuthor, MessageAttachment, MessageBlock, ServerSummary, TransportMode } from './types';
 import { ServerSidebar } from './components/ServerSidebar';
 import { ChannelSidebar } from './components/ChannelSidebar';
 import { MessageList } from './components/MessageList';
-import { MessageComposer } from './components/MessageComposer';
+import { MessageComposer, ComposerPayload } from './components/MessageComposer';
 import { TransportToggle } from './components/TransportToggle';
 import { MemberList } from './components/MemberList';
 import { UserProfileModal } from './components/UserProfileModal';
@@ -258,6 +258,14 @@ function ChatApp() {
           color: '#94a3b8',
         },
         content,
+        blocks: [
+          {
+            type: 'paragraph',
+            text: content,
+          },
+        ],
+        attachments: [],
+        mentions: [],
         timestamp: new Date().toISOString(),
         transport: 'server',
         system: true,
@@ -355,10 +363,15 @@ function ChatApp() {
   });
 
   const handleSendMessage = useCallback(
-    (content: string) => {
+    ({ content, blocks, attachments, mentions }: ComposerPayload) => {
       if (!selectedServerId || !selectedChannelId || !user) return;
       const trimmed = content.trim();
-      if (!trimmed) return;
+      const preparedAttachments: MessageAttachment[] = Array.isArray(attachments)
+        ? attachments.map((attachment) => ({ ...attachment }))
+        : [];
+      if (!trimmed && preparedAttachments.length === 0) {
+        return;
+      }
       const timestamp = new Date().toISOString();
       const author: MessageAuthor = {
         id: user.id,
@@ -368,12 +381,27 @@ function ChatApp() {
         socketId: selfMember?.socketId,
       };
 
+      const normalizedBlocks: MessageBlock[] =
+        Array.isArray(blocks) && blocks.length > 0
+          ? blocks
+          : trimmed
+          ? [
+              {
+                type: 'paragraph',
+                text: trimmed,
+              },
+            ]
+          : [];
+
       const baseMessage: Message = {
         id: nanoid(),
         serverId: selectedServerId,
         channelId: selectedChannelId,
         author,
         content: trimmed,
+        blocks: normalizedBlocks,
+        attachments: preparedAttachments,
+        mentions: Array.isArray(mentions) ? mentions : [],
         timestamp,
         transport: transportMode,
         pending: transportMode === 'server',
@@ -388,6 +416,9 @@ function ChatApp() {
             serverId: selectedServerId,
             channelId: selectedChannelId,
             content: trimmed,
+            blocks: normalizedBlocks,
+            attachments: preparedAttachments.map((attachment) => ({ id: attachment.id })),
+            mentions: baseMessage.mentions,
             tempId: baseMessage.id,
           },
           (response?: { ok: boolean; message?: Message; error?: string; tempId?: string }) => {
@@ -415,12 +446,23 @@ function ChatApp() {
         persistMessage(selectedServerId, selectedChannelId, {
           id: baseMessage.id,
           content: trimmed,
+          blocks: normalizedBlocks,
+          attachments: preparedAttachments.map((attachment) => ({ id: attachment.id })),
+          mentions: baseMessage.mentions,
           transport: 'p2p',
           timestamp,
         }).catch((error) => console.error('Failed to persist peer message', error));
       }
     },
-    [selectedServerId, selectedChannelId, user, transportMode, socket, sendPeerMessage, selfMember]
+    [
+      selectedServerId,
+      selectedChannelId,
+      user,
+      transportMode,
+      socket,
+      sendPeerMessage,
+      selfMember,
+    ]
   );
 
   const handleCreateServer = async () => {

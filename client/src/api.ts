@@ -1,4 +1,4 @@
-import { AuthUser, Message, ServerSummary, TransportMode } from './types';
+import { AuthUser, Message, MessageAttachment, MessageBlock, ServerSummary, TransportMode } from './types';
 
 const API_BASE = '/api';
 
@@ -57,12 +57,36 @@ export async function createChannel(serverId: string, payload: { name: string; t
 export async function persistMessage(
   serverId: string,
   channelId: string,
-  payload: { id?: string; content: string; transport?: TransportMode; timestamp?: string }
+  payload: {
+    id?: string;
+    content: string;
+    blocks?: MessageBlock[];
+    attachments?: Pick<MessageAttachment, 'id'>[];
+    mentions?: string[];
+    transport?: TransportMode;
+    timestamp?: string;
+  }
 ) {
   return request<{ message: Message }>(`${API_BASE}/servers/${serverId}/channels/${channelId}/messages`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function uploadAttachment(file: File): Promise<MessageAttachment> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${API_BASE}/uploads`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || response.statusText);
+  }
+  const data = (await response.json()) as { attachment: MessageAttachment };
+  return data.attachment;
 }
 
 export async function registerAccount(payload: {
