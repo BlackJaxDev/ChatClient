@@ -35,13 +35,13 @@ The goal is to evolve the application toward production-ready collaboration feat
 - As a moderator/admin, I can see accurate authorship for every message.
 
 **Architecture changes**
-- **Data model**: Introduce `User` table with fields: `id`, `email`, `passwordHash`, `displayName`, `avatarUrl`, `accentColor`, `createdAt`, `updatedAt`, `status`.
-- **Auth**: Implement sessions with JWT (HTTP-only cookies) or session store. Add password hashing (bcrypt/argon2) and validation middleware.
-- **API**:
-  - `POST /api/auth/register`
-  - `POST /api/auth/login`
-  - `POST /api/auth/logout`
-  - `GET /api/me` – returns profile + preferences.
+- ~~**Data model**: Introduce `User` table with fields: `id`, `email`, `passwordHash`, `displayName`, `avatarUrl`, `accentColor`, `createdAt`, `updatedAt`, `status`.~~
+- ~~**Auth**: Implement sessions with JWT (HTTP-only cookies) or session store. Add password hashing (bcrypt/argon2) and validation middleware.~~
+- ~~**API**:~~
+  - ~~`POST /api/auth/register`~~
+  - ~~`POST /api/auth/login`~~
+  - ~~`POST /api/auth/logout`~~
+  - ~~`GET /api/me` – returns profile + preferences.~~
 - **Socket**: Authenticate connections via token; include `userId` in `register` payloads. Maintain presence keyed by user ID.
 - **Frontend**: Add auth routes (sign-in/up forms), global auth context, secure storage of tokens, profile settings page.
 - **Persistence**: Replace JSON file with relational DB. Provide migration script to import existing demo users (optional).
