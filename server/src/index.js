@@ -14,8 +14,9 @@ const { AUTH_COOKIE_NAME, createAuthHandlers, parseCookies } = require('./auth')
 const { ensureUploadDir, saveBuffer, openReadStream, fileStat } = require('./storage');
 
 const PORT = process.env.PORT || 3001;
-const DB_FILE = path.join(__dirname, '..', 'data', 'chatclient.sqlite');
-const SESSIONS_FILE = path.join(__dirname, '..', 'data', 'sessions.json');
+const DB_FILE = process.env.CHATCLIENT_DB_FILE || path.join(__dirname, '..', 'data', 'chatclient.sqlite');
+const SESSIONS_FILE =
+  process.env.CHATCLIENT_SESSIONS_FILE || path.join(__dirname, '..', 'data', 'sessions.json');
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
@@ -224,7 +225,7 @@ app.get('/api/servers/:serverId', (req, res) => {
   res.json({ server: summary });
 });
 
-app.post('/api/servers', (req, res) => {
+app.post('/api/servers', auth.requireAuth, (req, res) => {
   const { name, description, accentColor, icon } = req.body || {};
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Server name is required' });
@@ -238,7 +239,7 @@ app.post('/api/servers', (req, res) => {
   res.status(201).json({ server });
 });
 
-app.post('/api/servers/:serverId/channels', (req, res) => {
+app.post('/api/servers/:serverId/channels', auth.requireAuth, (req, res) => {
   const { serverId } = req.params;
   const { name, topic } = req.body || {};
   if (!name || !name.trim()) {
@@ -768,6 +769,10 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`Server listening on port ${PORT}`);
+  });
+}
+
+module.exports = { app, server };
