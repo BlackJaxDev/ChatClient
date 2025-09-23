@@ -149,6 +149,11 @@ function ChatApp() {
     return style;
   }, [serverAccent]);
 
+  const profileAvatarUrl = useMemo(() => {
+    const value = (user?.avatarUrl ?? '').trim();
+    return isValidHttpUrl(value) ? value : '';
+  }, [user?.avatarUrl]);
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('chatclient.transport', transportMode);
@@ -377,7 +382,7 @@ function ChatApp() {
         id: user.id,
         name: user.displayName,
         color: selfMember?.color || user.accentColor || '#6366f1',
-        avatarUrl: user.avatarUrl || undefined,
+        avatarUrl: profileAvatarUrl || undefined,
         socketId: selfMember?.socketId,
       };
 
@@ -462,6 +467,7 @@ function ChatApp() {
       socket,
       sendPeerMessage,
       selfMember,
+      profileAvatarUrl,
     ]
   );
 
@@ -493,10 +499,14 @@ function ChatApp() {
   };
 
   const handleProfileSave = useCallback(
-    async (name: string, color: string) => {
+    async (name: string, color: string, avatarUrl: string) => {
       setProfileSaving(true);
       try {
-        const updated = await updateProfile({ displayName: name, accentColor: color });
+        const updated = await updateProfile({
+          displayName: name,
+          accentColor: color,
+          avatarUrl: avatarUrl.trim(),
+        });
         setAccentColor(updated.accentColor);
         socket?.emit('register', {}, (response?: { ok: boolean; profile?: Member }) => {
           if (response?.ok && response.profile) {
@@ -542,6 +552,11 @@ function ChatApp() {
   if (!user) {
     return <AuthScreen />;
   }
+
+  const fallbackAvatarColor = selfMember?.color || user.accentColor || '#6366f1';
+  const profileAvatarClassName = ['server-banner__avatar', profileAvatarUrl ? 'server-banner__avatar--image' : null]
+    .filter((value): value is string => Boolean(value))
+    .join(' ');
 
   return (
     <div className="app-shell">
@@ -596,11 +611,11 @@ function ChatApp() {
                   onClick={() => setProfileModalOpen(true)}
                 >
                   <span
-                    className="server-banner__avatar"
-                    style={{ backgroundColor: selfMember?.color || user.accentColor || '#6366f1' }}
-                    aria-hidden={true}
+                    className={profileAvatarClassName}
+                    style={profileAvatarUrl ? undefined : { backgroundColor: fallbackAvatarColor }}
+                    aria-hidden={profileAvatarUrl ? undefined : true}
                   >
-                    {initials(user.displayName)}
+                    {profileAvatarUrl ? <img src={profileAvatarUrl} alt="" /> : initials(user.displayName)}
                   </span>
                   <div className="server-banner__profile-meta">
                     <strong>{user.displayName}</strong>
@@ -646,6 +661,7 @@ function ChatApp() {
         open={profileModalOpen}
         initialName={user.displayName}
         initialColor={user.accentColor}
+        initialAvatarUrl={user.avatarUrl}
         onSave={handleProfileSave}
         onClose={() => setProfileModalOpen(false)}
         saving={profileSaving}
@@ -677,6 +693,16 @@ function initials(name: string) {
 function randomAccent() {
   const palette = ['#ef4444', '#f97316', '#facc15', '#34d399', '#60a5fa', '#a855f7'];
   return palette[Math.floor(Math.random() * palette.length)];
+}
+
+function isValidHttpUrl(value: string) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (error) {
+    return false;
+  }
 }
 
 type BannerStyle = CSSProperties & {

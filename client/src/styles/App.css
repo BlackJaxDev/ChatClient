@@ -442,6 +442,20 @@
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.25);
 }
 
+.server-banner__avatar--image {
+  background: transparent;
+  color: inherit;
+  overflow: hidden;
+}
+
+.server-banner__avatar--image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+  display: block;
+}
+
 .server-banner__profile-meta {
   display: flex;
   flex-direction: column;
@@ -1140,8 +1154,53 @@
   font-size: 0.9rem;
 }
 
+.user-profile-modal__avatar-input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-profile-modal__avatar-input input {
+  flex: 1;
+}
+
+.user-profile-modal__avatar-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  overflow: hidden;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
+}
+
+.user-profile-modal__avatar-preview span {
+  font-size: 0.9rem;
+}
+
+.user-profile-modal__avatar-preview--image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.user-profile-modal__hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.user-profile-modal__hint--warning {
+  color: #f97316;
+}
+
 .user-profile-modal__content input[type='text'],
-.user-profile-modal__content input[type='color'] {
+.user-profile-modal__content input[type='color'],
+.user-profile-modal__content input[type='url'] {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
