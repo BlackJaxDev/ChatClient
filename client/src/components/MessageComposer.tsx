@@ -1,4 +1,14 @@
-import { ChangeEvent, FormEvent, KeyboardEvent, useId, useMemo, useRef, useState } from 'react';
+import {
+  ChangeEvent,
+  FormEvent,
+  KeyboardEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { nanoid } from 'nanoid';
 import clsx from 'clsx';
 import { uploadAttachment } from '../api';
@@ -25,6 +35,8 @@ interface MessageComposerProps {
   onSend: (payload: ComposerPayload) => void;
   placeholder?: string;
   transportLabel: string;
+  onTypingStart?: () => void;
+  onTypingStop?: () => void;
 }
 
 function extractMentions(text: string): string[] {
@@ -45,13 +57,24 @@ function formatFileSize(bytes: number) {
   return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-export function MessageComposer({ disabled, onSend, placeholder, transportLabel }: MessageComposerProps) {
+const TYPING_INACTIVITY_MS = 2500;
+
+export function MessageComposer({
+  disabled,
+  onSend,
+  placeholder,
+  transportLabel,
+  onTypingStart,
+  onTypingStop,
+}: MessageComposerProps) {
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<DraftAttachment[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingActiveRef = useRef(false);
 
   const hasText = value.trim().length > 0;
   const hasAttachment = attachments.length > 0;
@@ -69,6 +92,34 @@ export function MessageComposer({ disabled, onSend, placeholder, transportLabel 
 
   const canSubmit = !disabled && !hasUploadInProgress && !hasAttachmentError && (hasText || hasAttachment);
 
+  const stopTyping = useCallback(() => {
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    if (typingActiveRef.current) {
+      onTypingStop?.();
+      typingActiveRef.current = false;
+    }
+  }, [onTypingStop]);
+
+  const bumpTyping = useCallback(() => {
+    if (!onTypingStart && !onTypingStop) {
+      return;
+    }
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    if (!typingActiveRef.current) {
+      onTypingStart?.();
+      typingActiveRef.current = true;
+    }
+    typingTimerRef.current = setTimeout(() => {
+      stopTyping();
+    }, TYPING_INACTIVITY_MS);
+  }, [onTypingStart, onTypingStop, stopTyping]);
+
   const handleSubmit = (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
     if (!canSubmit) return;
@@ -85,12 +136,15 @@ export function MessageComposer({ disabled, onSend, placeholder, transportLabel 
     setAttachments([]);
     setShowPreview(false);
     setShowEmojiPicker(false);
+    stopTyping();
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSubmit();
+    } else if (value.trim()) {
+      bumpTyping();
     }
   };
 
@@ -134,9 +188,25 @@ export function MessageComposer({ disabled, onSend, placeholder, transportLabel 
   };
 
   const handleInsertEmoji = (emoji: string) => {
-    setValue((prev) => `${prev}${emoji}`);
+    setValue((prev) => {
+      const next = `${prev}${emoji}`;
+      if (next.trim()) {
+        bumpTyping();
+      } else {
+        stopTyping();
+      }
+      return next;
+    });
     setShowEmojiPicker(false);
   };
+
+  useEffect(() => {
+    if (disabled) {
+      stopTyping();
+    }
+  }, [disabled, stopTyping]);
+
+  useEffect(() => () => stopTyping(), [stopTyping]);
 
   return (
     <form className={clsx('message-composer', { 'message-composer--preview': showPreview })} onSubmit={handleSubmit}>
@@ -145,7 +215,15 @@ export function MessageComposer({ disabled, onSend, placeholder, transportLabel 
           rows={3}
           value={value}
           disabled={disabled}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => {
+            const nextValue = event.target.value;
+            setValue(nextValue);
+            if (nextValue.trim()) {
+              bumpTyping();
+            } else {
+              stopTyping();
+            }
+          }}
           onKeyDown={handleKeyDown}
           placeholder={placeholder || 'Message #channel'}
         />
