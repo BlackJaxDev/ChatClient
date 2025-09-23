@@ -359,6 +359,101 @@ const io = new Server(server, {
 const clients = new Map(); // socketId -> member profile
 const socketsByUser = new Map(); // userId -> Set<socketId>
 const channelMembers = new Map(); // room -> Map<userId, Set<socketId>>
+const typingState = new Map(); // room -> Map<userId, { sockets: Set<socketId>, profile: Member }>
+const typingBroadcastTimers = new Map(); // room -> Timeout
+
+const TYPING_BROADCAST_INTERVAL_MS = 250;
+
+function ensureTypingRoom(room) {
+  if (!typingState.has(room)) {
+    typingState.set(room, new Map());
+  }
+  return typingState.get(room);
+}
+
+function parseRoom(room) {
+  const [serverId = '', channelId = ''] = (room || '').split(':');
+  return { serverId, channelId };
+}
+
+function getTypingMembers(room) {
+  const roomTyping = typingState.get(room);
+  if (!roomTyping) {
+    return [];
+  }
+  const members = [];
+  for (const entry of roomTyping.values()) {
+    if (entry.sockets.size === 0) {
+      continue;
+    }
+    if (entry.profile) {
+      members.push(entry.profile);
+    }
+  }
+  return members;
+}
+
+function scheduleTypingBroadcast(room) {
+  if (typingBroadcastTimers.has(room)) {
+    return;
+  }
+  const timer = setTimeout(() => {
+    typingBroadcastTimers.delete(room);
+    emitTyping(room);
+  }, TYPING_BROADCAST_INTERVAL_MS);
+  typingBroadcastTimers.set(room, timer);
+}
+
+function emitTyping(room) {
+  const { serverId, channelId } = parseRoom(room);
+  const typers = getTypingMembers(room);
+  io.to(room).emit('typing-update', {
+    room,
+    serverId,
+    channelId,
+    typers,
+  });
+}
+
+function clearTypingForSocket(socket, room) {
+  const targetRoom = room || socket?.data?.currentRoom;
+  if (!targetRoom) {
+    return;
+  }
+  const userId = socket?.data?.user?.id;
+  const roomTyping = typingState.get(targetRoom);
+  if (!roomTyping) {
+    return;
+  }
+  let changed = false;
+  if (userId && roomTyping.has(userId)) {
+    const entry = roomTyping.get(userId);
+    if (entry.sockets.delete(socket.id)) {
+      changed = true;
+    }
+    if (entry.sockets.size === 0) {
+      roomTyping.delete(userId);
+      changed = true;
+    }
+  } else if (!userId) {
+    for (const [memberId, entry] of roomTyping.entries()) {
+      if (entry.sockets.delete(socket.id)) {
+        changed = true;
+      }
+      if (entry.sockets.size === 0) {
+        roomTyping.delete(memberId);
+        changed = true;
+      }
+    }
+  }
+  if (roomTyping.size === 0) {
+    typingState.delete(targetRoom);
+    changed = true;
+  }
+  if (changed) {
+    scheduleTypingBroadcast(targetRoom);
+  }
+}
 
 io.use((socket, next) => {
   try {
@@ -514,6 +609,7 @@ function leaveRoom(socket, reason = 'left') {
   if (!currentRoom) {
     return;
   }
+  clearTypingForSocket(socket, currentRoom);
   socket.leave(currentRoom);
   const membership = channelMembers.get(currentRoom);
   let userLeft = false;
@@ -616,6 +712,12 @@ io.on('connection', (socket) => {
     }
 
     emitPresence(room);
+    socket.emit('typing-update', {
+      room,
+      serverId,
+      channelId,
+      typers: getTypingMembers(room),
+    });
 
     if (ack) {
       ack({ ok: true, members: getPresenceMembers(room) });
@@ -694,6 +796,44 @@ io.on('connection', (socket) => {
     } catch (error) {
       if (ack) ack({ ok: false, error: error.message });
     }
+  });
+
+  socket.on('typing-start', (payload = {}) => {
+    const { serverId, channelId } = payload;
+    if (!serverId || !channelId) {
+      return;
+    }
+    const room = roomKey(serverId, channelId);
+    if (socket.data.currentRoom !== room) {
+      return;
+    }
+    if (!socket.data.user) {
+      return;
+    }
+    const roomTyping = ensureTypingRoom(room);
+    let entry = roomTyping.get(socket.data.user.id);
+    if (!entry) {
+      entry = { sockets: new Set(), profile: null };
+      roomTyping.set(socket.data.user.id, entry);
+    }
+    entry.sockets.add(socket.id);
+    const profile = getMemberProfile(socket.id);
+    if (profile) {
+      entry.profile = profile;
+    }
+    scheduleTypingBroadcast(room);
+  });
+
+  socket.on('typing-stop', (payload = {}) => {
+    const { serverId, channelId } = payload;
+    if (!serverId || !channelId) {
+      return;
+    }
+    const room = roomKey(serverId, channelId);
+    if (socket.data.currentRoom !== room) {
+      return;
+    }
+    clearTypingForSocket(socket, room);
   });
 
   socket.on('p2p-ready', (payload = {}) => {

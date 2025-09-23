@@ -8,6 +8,7 @@ import { ServerSidebar } from './components/ServerSidebar';
 import { ChannelSidebar } from './components/ChannelSidebar';
 import { MessageList } from './components/MessageList';
 import { MessageComposer, ComposerPayload } from './components/MessageComposer';
+import { TypingIndicator } from './components/TypingIndicator';
 import { TransportToggle } from './components/TransportToggle';
 import { MemberList } from './components/MemberList';
 import { UserProfileModal } from './components/UserProfileModal';
@@ -109,6 +110,7 @@ function ChatApp() {
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
   const [messages, dispatchMessages] = useReducer(messagesReducer, {});
   const [members, setMembers] = useState<Member[]>([]);
+  const [typingByRoom, setTypingByRoom] = useState<Record<string, Member[]>>({});
   const [transportMode, setTransportMode] = useState<TransportMode>(() => {
     if (typeof window !== 'undefined') {
       const stored = window.localStorage.getItem('chatclient.transport');
@@ -139,6 +141,16 @@ function ChatApp() {
     return messages[channelKey(selectedServerId, selectedChannelId)] ?? [];
   }, [messages, selectedServerId, selectedChannelId]);
 
+  const typingMembers = useMemo(() => {
+    if (!selectedServerId || !selectedChannelId) return [] as Member[];
+    const key = channelKey(selectedServerId, selectedChannelId);
+    const roomTypers = typingByRoom[key] ?? [];
+    if (!user?.id) {
+      return roomTypers;
+    }
+    return roomTypers.filter((member) => member.userId !== user.id);
+  }, [typingByRoom, selectedServerId, selectedChannelId, user?.id]);
+
   const serverAccent = currentServer?.accentColor || accentColor;
 
   const serverBannerStyle = useMemo(() => {
@@ -162,6 +174,7 @@ function ChatApp() {
       setMembers([]);
       setSelfMember(null);
       setCurrentRoom(null);
+      setTypingByRoom({});
       dispatchMessages({ type: 'reset' });
       return;
     }
@@ -224,6 +237,7 @@ function ChatApp() {
 
     const handleDisconnect = () => {
       setConnectionState('disconnected');
+      setTypingByRoom({});
     };
 
     const handleMessage = (payload: { type: string; message: Message }) => {
@@ -279,12 +293,31 @@ function ChatApp() {
       setConnectionState('disconnected');
     };
 
+    const handleTypingUpdate = (payload: { room: string; serverId: string; channelId: string; typers: Member[] }) => {
+      if (!payload?.serverId || !payload?.channelId) {
+        return;
+      }
+      const key = channelKey(payload.serverId, payload.channelId);
+      setTypingByRoom((prev) => {
+        if (!payload.typers || payload.typers.length === 0) {
+          if (!prev[key]) {
+            return prev;
+          }
+          const { [key]: _removed, ...rest } = prev;
+          return rest;
+        }
+        const next = { ...prev, [key]: payload.typers };
+        return next;
+      });
+    };
+
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('message', handleMessage);
     socket.on('presence-update', handlePresence);
     socket.on('channel-event', handleChannelEvent);
     socket.on('connect_error', handleConnectError);
+    socket.on('typing-update', handleTypingUpdate);
 
     if (socket.connected) {
       handleConnect();
@@ -300,6 +333,7 @@ function ChatApp() {
       socket.off('presence-update', handlePresence);
       socket.off('channel-event', handleChannelEvent);
       socket.off('connect_error', handleConnectError);
+      socket.off('typing-update', handleTypingUpdate);
     };
   }, [socket, user, selectedServerId, selectedChannelId, currentRoom]);
 
@@ -311,6 +345,18 @@ function ChatApp() {
       }
     });
   }, [socket, user?.displayName, user?.accentColor, user?.avatarUrl]);
+
+  useEffect(() => {
+    if (!selectedServerId || !selectedChannelId) {
+      setTypingByRoom({});
+      return;
+    }
+    const key = channelKey(selectedServerId, selectedChannelId);
+    setTypingByRoom((prev) => {
+      const existing = prev[key];
+      return existing ? { [key]: existing } : {};
+    });
+  }, [selectedServerId, selectedChannelId]);
 
   useEffect(() => {
     if (!socket || !socket.connected || !user || !selectedServerId || !selectedChannelId) return;
@@ -329,6 +375,7 @@ function ChatApp() {
       socket.emit('leave-channel');
       setMembers([]);
       setCurrentRoom(null);
+      setTypingByRoom({});
     };
   }, [socket, user, selectedServerId, selectedChannelId]);
 
@@ -351,6 +398,18 @@ function ChatApp() {
     };
     dispatchMessages({ type: 'add', serverId: normalized.serverId, channelId: normalized.channelId, message: normalized });
   }, []);
+
+  const handleTypingStart = useCallback(() => {
+    if (!socket || !socket.connected) return;
+    if (!selectedServerId || !selectedChannelId) return;
+    socket.emit('typing-start', { serverId: selectedServerId, channelId: selectedChannelId });
+  }, [socket, selectedServerId, selectedChannelId]);
+
+  const handleTypingStop = useCallback(() => {
+    if (!socket || !socket.connected) return;
+    if (!selectedServerId || !selectedChannelId) return;
+    socket.emit('typing-stop', { serverId: selectedServerId, channelId: selectedChannelId });
+  }, [socket, selectedServerId, selectedChannelId]);
 
   const { peers: p2pPeers, sendMessage: sendPeerMessage, isActive: isP2PActive } = useP2P({
     socket,
@@ -634,11 +693,14 @@ function ChatApp() {
           </div>
         </header>
         <MessageList messages={currentMessages} currentUserId={user.id} />
+        <TypingIndicator typers={typingMembers} />
         <MessageComposer
           disabled={composerDisabled}
           onSend={handleSendMessage}
           transportLabel={transportLabel}
           placeholder={composerPlaceholder}
+          onTypingStart={handleTypingStart}
+          onTypingStop={handleTypingStop}
         />
       </section>
       <MemberList members={members} currentUserId={user.id} />
