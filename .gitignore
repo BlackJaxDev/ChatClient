@@ -36,3 +36,4 @@ dist
 coverage/
 ios/main.jsbundle
 firebase-key\.json
+server/data/
