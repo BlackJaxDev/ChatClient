@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    // Polyfill Node's global for browser bundles expecting it
+    global: 'globalThis',
+  },
   server: {
     port: 5173,
     proxy: {
